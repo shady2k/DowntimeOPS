@@ -93,6 +93,7 @@ export function generateTextures(scene: Phaser.Scene): void {
   generateDeviceTextures(scene);
   generatePortTextures(scene);
   generateSlotHighlights(scene);
+  generateWorldSprites(scene);
 }
 
 function generateRoomBackground(scene: Phaser.Scene): void {
@@ -412,3 +413,148 @@ function generateSlotHighlights(scene: Phaser.Scene): void {
   gh.generateTexture("slot-hover", w, h);
   gh.destroy();
 }
+
+function generateWorldSprites(scene: Phaser.Scene): void {
+  generatePackageBox(scene);
+  generateWorldRack(scene);
+  generatePlacementZone(scene);
+}
+
+function generatePackageBox(scene: Phaser.Scene): void {
+  const w = 60;
+  const h = 50;
+  const g = scene.make.graphics({ x: 0, y: 0 }, false);
+
+  // Box body — warm cardboard brown
+  g.fillStyle(0x8a6a40, 1);
+  g.fillRoundedRect(0, 6, w, h - 6, 3);
+
+  // Top flaps (closed box top)
+  g.fillStyle(0x9a7a50, 1);
+  g.fillRoundedRect(0, 0, w, 12, { tl: 3, tr: 3, bl: 0, br: 0 });
+
+  // Flap crease line
+  g.lineStyle(1, 0x6a5030, 0.6);
+  g.lineBetween(w / 2, 0, w / 2, 12);
+
+  // Top edge highlight
+  g.fillStyle(0xb08a58, 0.4);
+  g.fillRect(2, 1, w - 4, 1);
+
+  // Bottom shadow
+  g.fillStyle(0x000000, 0.15);
+  g.fillRect(2, h - 3, w - 4, 2);
+
+  // Packing tape — horizontal strip
+  g.fillStyle(0xc0a060, 0.5);
+  g.fillRect(4, 10, w - 8, 6);
+
+  // Packing tape — vertical strip
+  g.fillStyle(0xc0a060, 0.4);
+  g.fillRect(w / 2 - 4, 0, 8, h);
+
+  // Shipping label
+  g.fillStyle(0xf0e8d0, 0.8);
+  g.fillRect(8, 22, 24, 16);
+  // Label lines (fake text)
+  g.lineStyle(1, 0x8a7a60, 0.5);
+  g.lineBetween(10, 26, 28, 26);
+  g.lineBetween(10, 30, 24, 30);
+  g.lineBetween(10, 34, 20, 34);
+
+  // Side edge shading
+  g.fillStyle(0x000000, 0.08);
+  g.fillRect(w - 6, 6, 6, h - 9);
+
+  g.generateTexture("package-box", w, h);
+  g.destroy();
+}
+
+function generateWorldRack(scene: Phaser.Scene): void {
+  // Smaller rack for world view (not the detailed 42U close-up)
+  const w = 48;
+  const h = 80;
+  const g = scene.make.graphics({ x: 0, y: 0 }, false);
+
+  // Rack body — dark gunmetal
+  g.fillStyle(PALETTE.rackFrame, 1);
+  g.fillRoundedRect(0, 0, w, h, 4);
+
+  // Inner cavity
+  g.fillStyle(PALETTE.rackInner, 1);
+  g.fillRect(4, 4, w - 8, h - 8);
+
+  // Rails
+  g.fillStyle(PALETTE.rackRail, 1);
+  g.fillRect(0, 4, 4, h - 8);
+  g.fillRect(w - 4, 4, 4, h - 8);
+
+  // Slot lines (simplified — every ~6U)
+  g.lineStyle(1, PALETTE.slotLine, 0.3);
+  const slotCount = 7;
+  for (let i = 1; i < slotCount; i++) {
+    const y = 4 + i * ((h - 8) / slotCount);
+    g.lineBetween(4, y, w - 4, y);
+  }
+
+  // Screw dots on rails
+  g.fillStyle(PALETTE.rackScrew, 0.6);
+  for (let i = 0; i < 3; i++) {
+    const y = 16 + i * 24;
+    g.fillCircle(2, y, 1.5);
+    g.fillCircle(w - 2, y, 1.5);
+  }
+
+  // Top/bottom caps
+  g.fillStyle(PALETTE.rackBorder, 0.5);
+  g.fillRect(0, 0, w, 4);
+  g.fillRect(0, h - 4, w, 4);
+
+  // Outer border
+  g.lineStyle(1, PALETTE.rackBorder, 0.6);
+  g.strokeRoundedRect(0, 0, w, h, 4);
+
+  // Subtle LED dots (a couple of active devices)
+  g.fillStyle(PALETTE.portUp, 0.6);
+  g.fillCircle(8, 14, 1.5);
+  g.fillCircle(8, 26, 1.5);
+  g.fillStyle(PALETTE.portOff, 0.4);
+  g.fillCircle(8, 38, 1.5);
+
+  g.generateTexture("rack-world", w, h);
+  g.destroy();
+}
+
+function generatePlacementZone(scene: Phaser.Scene): void {
+  const w = 56;
+  const h = 88;
+  const g = scene.make.graphics({ x: 0, y: 0 }, false);
+
+  // Dashed border rectangle
+  g.lineStyle(2, PALETTE.slotValid, 0.4);
+  g.strokeRoundedRect(2, 2, w - 4, h - 4, 4);
+
+  // Corner brackets for emphasis
+  const bracketLen = 10;
+  g.lineStyle(2, PALETTE.slotValid, 0.7);
+  // Top-left
+  g.lineBetween(2, 2, 2 + bracketLen, 2);
+  g.lineBetween(2, 2, 2, 2 + bracketLen);
+  // Top-right
+  g.lineBetween(w - 2, 2, w - 2 - bracketLen, 2);
+  g.lineBetween(w - 2, 2, w - 2, 2 + bracketLen);
+  // Bottom-left
+  g.lineBetween(2, h - 2, 2 + bracketLen, h - 2);
+  g.lineBetween(2, h - 2, 2, h - 2 - bracketLen);
+  // Bottom-right
+  g.lineBetween(w - 2, h - 2, w - 2 - bracketLen, h - 2);
+  g.lineBetween(w - 2, h - 2, w - 2, h - 2 - bracketLen);
+
+  // Subtle fill
+  g.fillStyle(PALETTE.slotValid, 0.06);
+  g.fillRoundedRect(2, 2, w - 4, h - 4, 4);
+
+  g.generateTexture("placement-zone", w, h);
+  g.destroy();
+}
+

@@ -107,6 +107,12 @@ export function handleRpcRequest(
           interactableId: (params as Record<string, unknown>).interactableId as string,
         });
 
+      case "edgeExit":
+        return handleAction(server, id, {
+          type: "EDGE_EXIT",
+          side: (params as Record<string, unknown>).side as "left" | "right",
+        });
+
       case "buyItem":
         return handleAction(server, id, {
           type: "BUY_ITEM",

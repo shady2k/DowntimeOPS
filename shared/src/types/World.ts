@@ -12,7 +12,24 @@ export type InteractableId = string;
 
 // --- Room ---
 
-export type RoomKind = "exterior" | "lobby" | "shop" | "datacenter" | "office";
+export type RoomKind = "checkpoint" | "yard" | "storage" | "datacenter" | "office";
+
+// --- Storage (packages awaiting pickup) ---
+
+export interface StoragePackage {
+  itemId: ItemId;
+  purchasedAt: number; // game tick
+}
+
+export interface StorageState {
+  packages: Record<ItemId, StoragePackage>;
+}
+
+/** Auto-transition when player reaches a screen edge */
+export interface EdgeExit {
+  targetRoom: RoomId;
+  spawnPoint: string;
+}
 
 export interface Room {
   id: RoomId;
@@ -22,15 +39,20 @@ export interface Room {
   widthTiles: number;
   /** Height in tiles */
   heightTiles: number;
-  /** Named spawn points (e.g. "from-exterior", "from-datacenter") */
+  /** Named spawn points (e.g. "from-checkpoint", "from-yard") */
   spawnPoints: Record<string, Vec2>;
   placementZones: Record<string, PlacementZone>;
   interactables: Record<InteractableId, Interactable>;
+  /** Auto-transition at screen edges */
+  edgeExits?: {
+    left?: EdgeExit;
+    right?: EdgeExit;
+  };
 }
 
 // --- Placement zones (where racks/items can be placed on the floor) ---
 
-export type PlacementKind = "rack_slot" | "floor_item" | "shop_display";
+export type PlacementKind = "rack_slot" | "floor_item" | "storage_shelf";
 
 export interface PlacementZone {
   id: string;
@@ -47,10 +69,11 @@ export interface PlacementZone {
 
 export type InteractableKind =
   | "door"
-  | "shop_counter"
-  | "shop_display"
   | "rack_pad"
   | "rack"
+  | "storage_shelf"
+  | "staff_computer"
+  | "laptop"
   | "terminal";
 
 export interface Interactable {
@@ -62,6 +85,8 @@ export interface Interactable {
   /** Size in pixels */
   size: { w: number; h: number };
   enabled: boolean;
+  /** Player-facing interaction prompt (e.g. "Enter Yard", "Use Computer") */
+  label: string;
   /** Kind-specific data (e.g. door target room, shop listing ref) */
   data: Record<string, unknown>;
 }
@@ -78,7 +103,7 @@ export interface PlayerState {
 // --- Items (physical objects in the world) ---
 
 export type ItemKind = "rack" | "device" | "tool" | "decor";
-export type ItemState = "shop" | "carried" | "placed" | "installed";
+export type ItemState = "in_storage" | "carried" | "placed" | "installed";
 
 export interface ItemInstance {
   id: ItemId;
@@ -118,4 +143,5 @@ export interface WorldState {
   player: PlayerState;
   items: Record<ItemId, ItemInstance>;
   shop: ShopState;
+  storage: StorageState;
 }

@@ -1,6 +1,6 @@
 # DowntimeOPS — Development Plan
 
-**Status:** Phase 1 complete, entering Phase 2 (game feel & visual identity)
+**Status:** Phase 2 complete, entering Phase 3 (explorable world)
 
 ---
 
@@ -223,7 +223,75 @@ New players can start a game and understand the next step without external expla
 
 ---
 
-## Phase 3 — VLANs, Routing, Firewalls
+## Phase 3 — Explorable World
+Transform the game from rack-view panels into an explorable physical space. Player walks around a datacenter campus, buys equipment from a computer, picks up packages from storage, and physically installs them. See `migration-to-explorable-world.md` for full design.
+
+### Location flow:
+```
+Checkpoint (player spawn)
+        ↓
+    Yard (fenced area)
+    ├── Storage building (purchased packages arrive here)
+    └── Datacenter building (front-facing facade)
+                ↓ (enter door)
+        Datacenter interior
+        ├── Staff area (desk + computer for shop access)
+        └── Server floor (rack placement zones)
+```
+
+### Sprint 3.1 — World Foundation
+- [ ] Add shared spatial types (Room, Player, ItemInstance, Placement, Storage)
+- [ ] Extend server state factory with world map, player, storage, items
+- [ ] Add WorldScene: checkpoint → yard (storage building + datacenter facade) → datacenter interior (staff area + server floor)
+- [ ] Player spawn at checkpoint, camera follow, collision
+- [ ] Front-facing datacenter building asset
+- **Deliverable:** Walk from checkpoint through yard into datacenter interior
+
+### Sprint 3.2 — Interaction Framework
+- [ ] Input system: WASD/arrows movement, E to interact, Space to pick up/place
+- [ ] Interaction prompts and overlap detection
+- [ ] Server actions: movePlayer, interact, enterDoor
+- [ ] Ambience/audio region switching (exterior yard vs interior HVAC hum)
+- **Deliverable:** Fully traversable campus with prompts, gate, and building entry
+
+### Sprint 3.3 — Shop Computer & Storage Loop
+- [ ] Staff computer interaction inside datacenter: opens shop catalog UI
+- [ ] buyItem → item appears as package box in storage building (in yard)
+- [ ] Storage shelves with visible packages
+- [ ] pickupFromStorage + carried-item visual follow
+- [ ] Optional: laptop as purchasable item (portable shop access)
+- **Deliverable:** Buy a rack from computer, walk to storage, pick up box, carry it around
+
+### Sprint 3.4 — Rack Placement
+- [ ] Placement zones on datacenter server floor
+- [ ] placeRack validation and world persistence
+- [ ] Render placed rack as world object with collision
+- **Deliverable:** Place a rack onto the datacenter floor
+
+### Sprint 3.5 — Device Install Loop
+- [ ] Device listing in shop computer, buy, pick up from storage, carry device
+- [ ] Rack interaction for installing device
+- [ ] Reuse existing server PLACE_DEVICE logic behind installDevice
+- **Deliverable:** Rack + one installed server/switch
+
+### Sprint 3.6 — UX Pass
+- [ ] Minimal HUD in UIScene (money, room name, carrying indicator)
+- [ ] Objective flow: "use computer → buy rack → walk to storage → pick up box → place rack → install device"
+- [ ] Audio pass, screen transitions, interaction polish
+- [ ] Remove/disable obsolete React panels (EquipmentShop, etc.)
+- **Deliverable:** First end-to-end playable explorable vertical slice
+
+### Sprint 3.7 (optional) — Close-Up Rack View
+- [ ] RackInstallScene or modal subscene for rack interior
+- [ ] Show installed hardware visually in close-up
+- **Deliverable:** Better install readability
+
+### Phase 3 Done When
+Player can: spawn at checkpoint → walk through yard → enter datacenter → use staff computer to buy equipment → walk to storage to pick up package → carry it to datacenter floor → place rack → install device. The physical loop feels better than clicking panels.
+
+---
+
+## Phase 4 — VLANs, Routing, Firewalls
 Add the networking depth that makes the game unique.
 
 - [ ] VLAN model: VLAN IDs, color coding, subnet association
@@ -244,24 +312,22 @@ Add the networking depth that makes the game unique.
 
 ---
 
-## Phase 4 — Room View, Cooling, Power
-Physical infrastructure management.
+## Phase 5 — Cooling, Power, Staffing
+Physical infrastructure depth within the explorable world.
 
-- [ ] Room/floor plan view (isometric or top-down)
-- [ ] Place racks in room, plan layout
 - [ ] Multiple racks with inter-rack cabling
 - [ ] Cooling zones: hot aisle / cold aisle
 - [ ] Heat simulation: devices generate heat, cooling units have coverage
 - [ ] Thermal throttling → cascading failures if cooling fails
 - [ ] Power budget per rack: overload = shutdown
 - [ ] PDU management
-- [ ] Cable tray routing in room view
+- [ ] Cable tray routing on server floor
 - [ ] Medium/large client types with complex SLA requirements
 - [ ] Staff hiring: NOC operators for basic monitoring (auto-alert response)
 
 ---
 
-## Phase 5 — Multiple DCs & Multiplayer
+## Phase 6 — Multiple DCs & Multiplayer
 Global scale and social play.
 
 - [ ] Multiple datacenter locations (different cities)

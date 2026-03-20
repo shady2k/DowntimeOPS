@@ -1,69 +1,48 @@
 import Phaser from "phaser";
-import type { WorldState, ItemInstance, RoomId } from "@downtime-ops/shared";
+import type { WorldState, ItemInstance, RoomId, RoomKind, Interactable } from "@downtime-ops/shared";
 import { useGameStore } from "../../store/gameStore";
 import { rpcClient } from "../../rpc/client";
 
 /**
  * Side-view explorable world scene.
  *
- * Each room is a full-screen illustrated background.
- * Player walks left/right on the floor.
- * Room transitions happen at screen edges or doors.
- * Items/racks are layered sprites on top of the background.
+ * All gameplay data (rooms, doors, interactables, placement zones)
+ * comes from the server via WorldState. The client only handles
+ * rendering and input — it never hardcodes room connections or layouts.
  */
 
 /** Game viewport — all rooms render at this size */
 const GAME_W = 960;
 const GAME_H = 540;
 
-/** Per-room floor Y — where the character walks */
-/** Per-room floor Y and player scale */
-const ROOM_CONFIG: Record<string, { floorY: number; playerScale: number }> = {
-  exterior: { floorY: GAME_H * 0.88, playerScale: 90 },
-  lobby: { floorY: GAME_H * 0.92, playerScale: 140 },
-  datacenter: { floorY: GAME_H * 0.85, playerScale: 100 },
-};
-const DEFAULT_FLOOR_Y = GAME_H * 0.85;
-const DEFAULT_PLAYER_SCALE = 90;
-
 const PLAYER_SPEED = 200;
 
-/** Room background texture keys */
-const ROOM_BG: Record<string, string> = {
-  exterior: "room-exterior",
-  lobby: "room-shop",
-  datacenter: "room-bg",
+// --- Client-only rendering config (mapped by room kind) ---
+
+interface RenderConfig {
+  backgroundKey: string;
+  floorY: number;
+  playerScale: number;
+}
+
+const RENDER_BY_KIND: Record<RoomKind, RenderConfig> = {
+  checkpoint: { backgroundKey: "bg-checkpoint", floorY: GAME_H * 0.72, playerScale: 90 },
+  yard: { backgroundKey: "bg-yard", floorY: GAME_H * 0.72, playerScale: 90 },
+  storage: { backgroundKey: "bg-storage", floorY: GAME_H * 0.92, playerScale: 140 },
+  datacenter: { backgroundKey: "bg-datacenter", floorY: GAME_H * 0.85, playerScale: 100 },
+  office: { backgroundKey: "bg-datacenter", floorY: GAME_H * 0.85, playerScale: 100 },
 };
 
-/** Room connections — which room is left/right of each room, and door targets */
-const ROOM_CONNECTIONS: Record<string, {
-  left?: { room: string; interactableId: string };
-  right?: { room: string; interactableId: string };
-  doors?: Array<{ x: number; targetRoom: string; interactableId: string }>;
-}> = {
-  exterior: {
-    doors: [{ x: GAME_W * 0.5, targetRoom: "lobby", interactableId: "door-to-lobby" }],
-  },
-  lobby: {
-    left: { room: "exterior", interactableId: "door-to-exterior" },
-    right: { room: "datacenter", interactableId: "door-to-datacenter" },
-    doors: [
-      { x: GAME_W * 0.1, targetRoom: "exterior", interactableId: "door-to-exterior" },
-      { x: GAME_W * 0.9, targetRoom: "datacenter", interactableId: "door-to-datacenter" },
-    ],
-  },
-  datacenter: {
-    left: { room: "lobby", interactableId: "door-to-lobby" },
-    doors: [{ x: GAME_W * 0.1, targetRoom: "lobby", interactableId: "door-to-lobby" }],
-  },
+const DEFAULT_RENDER: RenderConfig = {
+  backgroundKey: "room-bg",
+  floorY: GAME_H * 0.85,
+  playerScale: 90,
 };
 
-/** Shop counter X position in lobby */
-const SHOP_COUNTER_X = GAME_W * 0.5;
 
 export class WorldScene extends Phaser.Scene {
   // Current room
-  private currentRoom: RoomId = "exterior";
+  private currentRoom: RoomId = "checkpoint";
 
   // Background
   private bgSprite!: Phaser.GameObjects.Image;
@@ -84,7 +63,7 @@ export class WorldScene extends Phaser.Scene {
   private carriedSprite: Phaser.GameObjects.Image | null = null;
 
   // Interaction
-  private nearestInteractable: string | null = null;
+  private nearestInteractable: { id: string; kind: string; prompt: string } | null = null;
   private promptText!: Phaser.GameObjects.Text;
 
   // Sync
@@ -95,11 +74,18 @@ export class WorldScene extends Phaser.Scene {
     super({ key: "WorldScene" });
   }
 
+  private getRender(): RenderConfig {
+    const world = useGameStore.getState().state?.world;
+    const room = world?.rooms[this.currentRoom];
+    if (room) return RENDER_BY_KIND[room.kind] ?? DEFAULT_RENDER;
+    return DEFAULT_RENDER;
+  }
+
   create() {
     this.cameras.main.setBackgroundColor(0x0d0a07);
 
     // Create background sprite (will be swapped per room)
-    this.bgSprite = this.add.image(GAME_W / 2, GAME_H / 2, "room-exterior")
+    this.bgSprite = this.add.image(GAME_W / 2, GAME_H / 2, "bg-checkpoint")
       .setDisplaySize(GAME_W, GAME_H)
       .setDepth(0);
 
@@ -116,13 +102,13 @@ export class WorldScene extends Phaser.Scene {
     };
     this.interactKey = this.input.keyboard!.addKey(Phaser.Input.Keyboard.KeyCodes.E);
 
-    // Interaction prompt
-    this.promptText = this.add.text(0, 0, "", {
+    // Interaction prompt — fixed at bottom center
+    this.promptText = this.add.text(GAME_W / 2, GAME_H - 40, "", {
       fontSize: "14px",
       fontFamily: "monospace",
       color: "#f0e0cc",
       backgroundColor: "#1e1814dd",
-      padding: { x: 8, y: 4 },
+      padding: { x: 12, y: 6 },
     }).setDepth(200).setVisible(false).setOrigin(0.5);
 
     // Subscribe to store
@@ -143,28 +129,14 @@ export class WorldScene extends Phaser.Scene {
     if (state?.world) {
       this.currentRoom = state.world.player.roomId;
       this.enterRoom(this.currentRoom, state.world);
-      this.player.setPosition(GAME_W / 2, this.getFloorY());
+      const pos = this.playerToScreen(state.world);
+      this.player.setPosition(pos.x, pos.y);
     }
 
     // Launch UI overlay
     if (!this.scene.isActive("UIScene")) {
       this.scene.launch("UIScene");
     }
-  }
-
-  private getFloorY(): number {
-    return ROOM_CONFIG[this.currentRoom]?.floorY ?? DEFAULT_FLOOR_Y;
-  }
-
-  private getPlayerScale(): number {
-    return ROOM_CONFIG[this.currentRoom]?.playerScale ?? DEFAULT_PLAYER_SCALE;
-  }
-
-  /** Apply the correct scale for the current room to the player sprite */
-  private applyPlayerScale() {
-    const ps = this.getPlayerScale();
-    this.playerSprite.setScale(ps / 580);
-    this.playerSprite.setOrigin(0.5, 0.85);
   }
 
   // --- Room management ---
@@ -184,53 +156,49 @@ export class WorldScene extends Phaser.Scene {
     this.itemSprites.clear();
 
     // Swap background
-    const bgKey = ROOM_BG[roomId];
-    if (bgKey && this.textures.exists(bgKey)) {
-      this.bgSprite.setTexture(bgKey);
+    const render = this.getRender();
+    if (this.textures.exists(render.backgroundKey)) {
+      this.bgSprite.setTexture(render.backgroundKey);
       this.bgSprite.setDisplaySize(GAME_W, GAME_H);
     }
 
     // Rescale player for this room
-    this.applyPlayerScale();
+    this.playerSprite.setScale(render.playerScale / 580);
+    this.playerSprite.setOrigin(0.5, 0.85);
 
-    // Build room-specific elements
-    this.buildRoomElements(roomId, world);
+    // Build visual hints from server interactables
+    this.buildInteractableHints(world);
 
     // Sync items for this room
     this.syncWorldItems(world);
   }
 
-  /** Get rack slot positions for the datacenter (computed from floor Y) */
-  private getDcRackSlots() {
-    const fy = ROOM_CONFIG.datacenter?.floorY ?? DEFAULT_FLOOR_Y;
-    return [
-      { id: "rack-slot-0", x: GAME_W * 0.25, y: fy - 60 },
-      { id: "rack-slot-1", x: GAME_W * 0.40, y: fy - 60 },
-      { id: "rack-slot-2", x: GAME_W * 0.55, y: fy - 60 },
-      { id: "rack-slot-3", x: GAME_W * 0.70, y: fy - 60 },
-      { id: "rack-slot-4", x: GAME_W * 0.85, y: fy - 60 },
-      { id: "rack-slot-5", x: GAME_W * 0.30, y: fy - 160 },
-    ];
+  private buildInteractableHints(_world: WorldState) {
+    // No visual hints — interaction prompt at bottom is sufficient
   }
 
-  private buildRoomElements(roomId: RoomId, _world: WorldState) {
-    const conn = ROOM_CONNECTIONS[roomId];
-    if (!conn) return;
-    const fy = this.getFloorY();
+  /** Map server player position to screen coordinates */
+  private playerToScreen(world: WorldState): { x: number; y: number } {
+    const room = world.rooms[world.player.roomId];
+    if (!room) return { x: GAME_W / 2, y: this.getRender().floorY };
+    const roomWidthPx = room.widthTiles * 32;
+    return {
+      x: (world.player.position.x / roomWidthPx) * GAME_W,
+      y: this.getRender().floorY,
+    };
+  }
 
-    // Subtle edge arrows (no rectangles — just text hints)
-    if (conn.left) {
-      const arrow = this.add.text(12, fy - 30, "◀ " + conn.left.room, {
-        fontSize: "11px", fontFamily: "monospace", color: "#e8a840",
-      }).setOrigin(0, 0.5).setDepth(5).setAlpha(0.4);
-      this.roomObjects.push(arrow);
-    }
-    if (conn.right) {
-      const arrow = this.add.text(GAME_W - 12, fy - 30, conn.right.room + " ▶", {
-        fontSize: "11px", fontFamily: "monospace", color: "#e8a840",
-      }).setOrigin(1, 0.5).setDepth(5).setAlpha(0.4);
-      this.roomObjects.push(arrow);
-    }
+  private edgeTransition(targetRoom: string, _spawnPoint: string, _enterFrom: "left" | "right") {
+    this.playerBody.setVelocityX(0);
+    const exitSide = _enterFrom === "right" ? "left" : "right";
+    rpcClient.call("edgeExit", { side: exitSide }).then(() => {
+      const newState = useGameStore.getState().state;
+      if (newState?.world) {
+        this.enterRoom(targetRoom, newState.world);
+        const pos = this.playerToScreen(newState.world);
+        this.player.setPosition(pos.x, pos.y);
+      }
+    });
   }
 
   // --- Player ---
@@ -239,13 +207,10 @@ export class WorldScene extends Phaser.Scene {
     // Use real player sprite sheet or fallback
     if (this.textures.exists("player-walk")) {
       this.playerSprite = this.add.sprite(0, 0, "player-walk", 0);
-      // Each frame is 580x940. Scale to target width preserving aspect ratio.
-      const scale = 90 / 580; // target ~90px wide
+      const scale = 90 / 580;
       this.playerSprite.setScale(scale);
-      // Shift sprite up so feet align with container origin (floor)
       this.playerSprite.setOrigin(0.5, 0.85);
 
-      // Create animations from unified spritesheet: frame 0 = idle, frames 1-8 = walk
       this.anims.create({
         key: "walk",
         frames: this.anims.generateFrameNumbers("player-walk", { start: 1, end: 8 }),
@@ -258,7 +223,6 @@ export class WorldScene extends Phaser.Scene {
         frameRate: 1,
       });
     } else {
-      // Fallback procedural sprite
       if (!this.textures.exists("player-fallback")) {
         const g = this.add.graphics();
         g.fillStyle(0xe8a840);
@@ -274,7 +238,7 @@ export class WorldScene extends Phaser.Scene {
       this.playerSprite = this.add.sprite(0, 0, "player-fallback");
     }
 
-    this.player = this.add.container(GAME_W / 2, this.getFloorY(), [this.playerSprite]);
+    this.player = this.add.container(GAME_W / 2, this.getRender().floorY, [this.playerSprite]);
     this.player.setSize(40, 80);
     this.player.setDepth(50);
 
@@ -308,19 +272,21 @@ export class WorldScene extends Phaser.Scene {
         this.itemSprites.set(itemId, container);
       }
 
-      // Map server position to screen position
-      // For placed racks in datacenter, use rack slot positions
-      if (item.state === "placed" && this.currentRoom === "datacenter") {
-        const slotIndex = this.getDcRackSlots().findIndex((s) => {
-          const room = world.rooms[this.currentRoom];
-          const zone = room?.placementZones[s.id];
-          return zone?.occupiedByItemId === itemId;
-        });
-        if (slotIndex >= 0) {
-          const slot = this.getDcRackSlots()[slotIndex];
-          container.setPosition(slot.x, slot.y);
+      // Map server position to screen position using placement zones
+      if (item.state === "placed") {
+        const room = world.rooms[this.currentRoom];
+        if (room) {
+          for (const zone of Object.values(room.placementZones)) {
+            if (zone.occupiedByItemId === itemId) {
+              const screenX = (zone.position.x / (room.widthTiles * 32)) * GAME_W;
+              const screenY = this.getRender().floorY - 60;
+              container.setPosition(screenX, screenY);
+              break;
+            }
+          }
         }
       }
+
       container.setVisible(true);
       container.setDepth(20);
     }
@@ -333,8 +299,9 @@ export class WorldScene extends Phaser.Scene {
     const container = this.add.container(0, 0);
 
     if (item.kind === "rack") {
-      if (this.textures.exists("rack-frame")) {
-        const sprite = this.add.image(0, 0, "rack-frame");
+      const key = this.textures.exists("rack-world") ? "rack-world" : "rack-frame";
+      if (this.textures.exists(key)) {
+        const sprite = this.add.image(0, 0, key);
         sprite.setDisplaySize(60, 120);
         container.add(sprite);
       } else {
@@ -380,24 +347,15 @@ export class WorldScene extends Phaser.Scene {
     if (!item) return;
 
     if (!this.carriedSprite) {
-      let textureKey: string | null = null;
-      if (item.kind === "rack") {
-        textureKey = "rack-frame";
-      } else {
-        textureKey = item.model.includes("server") ? "device-server"
-          : item.model.includes("switch") ? "device-switch"
-          : item.model.includes("router") ? "device-router"
-          : null;
-      }
+      // For carried items, show as package box
+      const textureKey = this.textures.exists("package-box") ? "package-box" : null;
 
-      if (textureKey && this.textures.exists(textureKey)) {
+      if (textureKey) {
         this.carriedSprite = this.add.image(0, 0, textureKey);
-        const size = item.kind === "rack" ? { w: 40, h: 80 } : { w: 50, h: 20 };
-        this.carriedSprite.setDisplaySize(size.w, size.h);
+        this.carriedSprite.setDisplaySize(40, 35);
       } else {
-        // Fallback rectangle as image
         const g = this.add.graphics();
-        g.fillStyle(0x4a4240);
+        g.fillStyle(0x8a6a40);
         g.fillRect(0, 0, 40, 30);
         g.generateTexture("carried-fallback", 40, 30);
         g.destroy();
@@ -414,7 +372,6 @@ export class WorldScene extends Phaser.Scene {
 
   update(_time: number, _delta: number) {
     this.handleMovement();
-    this.checkEdgeTransition();
     this.checkInteractables();
     this.handleInteraction();
     this.syncPositionToServer();
@@ -435,104 +392,80 @@ export class WorldScene extends Phaser.Scene {
 
     this.playerBody.setVelocityX(vx);
     // Lock to floor
-    this.player.y = this.getFloorY();
+    this.player.y = this.getRender().floorY;
     this.playerBody.setVelocityY(0);
+
+    // Edge exits — auto-transition or clamp
+    const state = useGameStore.getState().state;
+    const room = state?.world?.rooms[this.currentRoom];
+    const edges = room?.edgeExits;
+
+    if (this.player.x <= 20) {
+      if (edges?.left) {
+        this.edgeTransition(edges.left.targetRoom, edges.left.spawnPoint, "right");
+        return;
+      }
+      this.player.x = 20;
+    } else if (this.player.x >= GAME_W - 20) {
+      if (edges?.right) {
+        this.edgeTransition(edges.right.targetRoom, edges.right.spawnPoint, "left");
+        return;
+      }
+      this.player.x = GAME_W - 20;
+    }
 
     // Animation and facing
     if (vx !== 0) {
-      // Sprite faces right by default — flip when walking left
       this.playerSprite.setFlipX(vx < 0);
-
-      // Play walk animation
       if (this.anims.exists("walk")) {
         if (!this.playerSprite.anims.isPlaying || this.playerSprite.anims.currentAnim?.key !== "walk") {
           this.playerSprite.play("walk");
         }
       }
     } else {
-      // Stop walk animation and show idle texture
       if (this.playerSprite.anims.isPlaying) {
         this.playerSprite.stop();
       }
-      // Show idle frame (frame 0) from the same spritesheet
       this.playerSprite.setFrame(0);
     }
   }
 
-  /** Transition rooms when player walks to screen edge */
-  private checkEdgeTransition() {
-    const conn = ROOM_CONNECTIONS[this.currentRoom];
-    if (!conn) return;
-
-    if (this.player.x <= 20) {
-      if (conn.left) {
-        this.transitionToRoom(conn.left.room, conn.left.interactableId, "right");
-      } else {
-        // No room to the left — clamp
-        this.player.x = 20;
-      }
-    } else if (this.player.x >= GAME_W - 20) {
-      if (conn.right) {
-        this.transitionToRoom(conn.right.room, conn.right.interactableId, "left");
-      } else {
-        // No room to the right — clamp
-        this.player.x = GAME_W - 20;
-      }
-    }
-  }
-
-  private transitionToRoom(targetRoom: string, interactableId: string, enterFrom: "left" | "right") {
-    rpcClient.call("enterDoor", { interactableId }).then(() => {
-      const newState = useGameStore.getState().state;
-      if (newState?.world) {
-        this.enterRoom(targetRoom, newState.world);
-        this.player.setPosition(
-          enterFrom === "left" ? 60 : GAME_W - 60,
-          this.getFloorY(),
-        );
-      }
-    });
-  }
-
+  /** Check all interactables from server state — no client-side hardcoding */
   private checkInteractables() {
     const px = this.player.x;
-    let nearest: string | null = null;
-    let promptMsg = "";
+    this.nearestInteractable = null;
 
     const state = useGameStore.getState().state;
     if (!state?.world) return;
 
-    const conn = ROOM_CONNECTIONS[this.currentRoom];
+    const room = state.world.rooms[this.currentRoom];
+    if (!room) return;
 
-    // Check doors
-    if (conn?.doors) {
-      for (const door of conn.doors) {
-        if (Math.abs(px - door.x) < 50) {
-          nearest = `door:${door.interactableId}:${door.targetRoom}`;
-          promptMsg = `[E] Enter ${door.targetRoom}`;
-        }
+    const roomWidthPx = room.widthTiles * 32;
+
+    // Check all interactables from server
+    for (const interactable of Object.values(room.interactables)) {
+      if (!interactable.enabled) continue;
+
+      // Map server position to screen X
+      const screenX = (interactable.position.x / roomWidthPx) * GAME_W;
+      const interactRange = Math.max((interactable.size.w / roomWidthPx) * GAME_W * 0.5, 60);
+
+      if (Math.abs(px - screenX) < interactRange) {
+        const label = this.getInteractLabel(interactable);
+        this.nearestInteractable = { id: interactable.id, kind: interactable.kind, prompt: label };
       }
     }
 
-    // Check shop counter (in lobby)
-    if (this.currentRoom === "lobby") {
-      if (Math.abs(px - SHOP_COUNTER_X) < 80) {
-        nearest = "shop";
-        promptMsg = "[E] Browse Shop";
-      }
-    }
-
-    // Check placement zones (when carrying a rack in datacenter)
-    if (this.currentRoom === "datacenter" && state.world.player.carryingItemId) {
+    // Check placement zones (when carrying a rack)
+    if (state.world.player.carryingItemId) {
       const carriedItem = state.world.items[state.world.player.carryingItemId];
       if (carriedItem?.kind === "rack") {
-        const room = state.world.rooms[this.currentRoom];
-        for (const slot of this.getDcRackSlots()) {
-          const zone = room?.placementZones[slot.id];
-          if (zone?.occupiedByItemId) continue;
-          if (Math.abs(px - slot.x) < 50) {
-            nearest = `zone:${slot.id}`;
-            promptMsg = "[E] Place Rack Here";
+        for (const zone of Object.values(room.placementZones)) {
+          if (zone.kind !== "rack_slot" || zone.occupiedByItemId) continue;
+          const screenX = (zone.position.x / roomWidthPx) * GAME_W;
+          if (Math.abs(px - screenX) < 50) {
+            this.nearestInteractable = { id: zone.id, kind: "rack_pad", prompt: "[E] Place Rack" };
           }
         }
       }
@@ -544,60 +477,65 @@ export class WorldScene extends Phaser.Scene {
         if (item.state !== "placed" || item.roomId !== this.currentRoom) continue;
         const itemContainer = this.itemSprites.get(itemId);
         if (itemContainer && Math.abs(px - itemContainer.x) < 60) {
-          nearest = `item:${itemId}`;
-          promptMsg = `[E] Pick up ${item.kind}`;
+          this.nearestInteractable = { id: itemId, kind: "item", prompt: `[E] Pick up ${item.kind}` };
         }
       }
     }
 
-    this.nearestInteractable = nearest;
-
-    if (nearest && promptMsg) {
-      this.promptText.setText(promptMsg);
-      this.promptText.setPosition(this.player.x, this.player.y - 80);
+    // Show/hide prompt — fixed at bottom center
+    if (this.nearestInteractable) {
+      this.promptText.setText(this.nearestInteractable.prompt);
       this.promptText.setVisible(true);
     } else {
       this.promptText.setVisible(false);
     }
   }
 
+  private getInteractLabel(interactable: Interactable): string {
+    return `[E] ${interactable.label}`;
+  }
+
   private handleInteraction() {
     if (!Phaser.Input.Keyboard.JustDown(this.interactKey)) return;
     if (!this.nearestInteractable) return;
 
-    const id = this.nearestInteractable;
+    const { id, kind } = this.nearestInteractable;
     const state = useGameStore.getState().state;
     if (!state?.world) return;
 
-    if (id.startsWith("door:")) {
-      const [, interactableId, targetRoom] = id.split(":");
-      rpcClient.call("enterDoor", { interactableId }).then(() => {
+    if (kind === "door") {
+      rpcClient.call("enterDoor", { interactableId: id }).then(() => {
         const newState = useGameStore.getState().state;
         if (newState?.world) {
-          this.enterRoom(targetRoom, newState.world);
-          this.player.setPosition(GAME_W / 2, this.getFloorY());
+          this.enterRoom(newState.world.player.roomId, newState.world);
+          const pos = this.playerToScreen(newState.world);
+          this.player.setPosition(pos.x, pos.y);
         }
       });
       return;
     }
 
-    if (id === "shop") {
+    if (kind === "staff_computer" || kind === "laptop") {
       this.events.emit("openShop");
       return;
     }
 
-    if (id.startsWith("zone:")) {
-      const zoneId = id.slice(5);
+    if (kind === "rack_pad") {
       const carryingId = state.world.player.carryingItemId;
       if (carryingId) {
-        rpcClient.call("placeRack", { itemId: carryingId, zoneId });
+        rpcClient.call("placeRack", { itemId: carryingId, zoneId: id });
       }
       return;
     }
 
-    if (id.startsWith("item:")) {
-      const itemId = id.slice(5);
-      rpcClient.call("pickupItem", { itemId });
+    if (kind === "item") {
+      rpcClient.call("pickupItem", { itemId: id });
+      return;
+    }
+
+    if (kind === "storage_shelf") {
+      // Pickup from storage shelf
+      rpcClient.call("pickupFromStorage", { itemId: id });
       return;
     }
   }

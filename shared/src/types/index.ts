@@ -35,5 +35,8 @@ export type {
   ItemInstance,
   ShopListing,
   ShopState,
+  StoragePackage,
+  StorageState,
+  EdgeExit,
   WorldState,
 } from "./World";

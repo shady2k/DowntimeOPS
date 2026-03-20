@@ -17,6 +17,7 @@ function genId(prefix: string): string {
 export type WorldAction =
   | { type: "MOVE_PLAYER"; position: Vec2; facing: Facing }
   | { type: "ENTER_DOOR"; interactableId: string }
+  | { type: "EDGE_EXIT"; side: "left" | "right" }
   | { type: "BUY_ITEM"; listingId: string }
   | { type: "PICKUP_ITEM"; itemId: string }
   | { type: "DROP_ITEM"; position: Vec2 }
@@ -34,6 +35,8 @@ export function applyWorldAction(
       return movePlayer(state, action.position, action.facing);
     case "ENTER_DOOR":
       return enterDoor(state, action.interactableId);
+    case "EDGE_EXIT":
+      return edgeExit(state, action.side);
     case "BUY_ITEM":
       return buyItem(state, action.listingId);
     case "PICKUP_ITEM":
@@ -44,8 +47,10 @@ export function applyWorldAction(
       return placeRack(state, action.itemId, action.zoneId);
     case "INSTALL_DEVICE":
       return installDevice(state, action.itemId, action.rackItemId, action.slotU);
-    default:
-      return { state, error: "Unknown world action type" };
+    default: {
+      const _exhaustive: never = action;
+      return { state, error: `Unknown world action type: ${(_exhaustive as { type: string }).type}` };
+    }
   }
 }
 
@@ -127,6 +132,54 @@ function enterDoor(
       newItems = {
         ...newItems,
         [item.id]: { ...item, roomId: targetRoomId, position: spawnPos },
+      };
+    }
+  }
+
+  return {
+    state: {
+      ...state,
+      world: {
+        ...state.world,
+        player: newPlayer,
+        items: newItems,
+      },
+    },
+  };
+}
+
+function edgeExit(
+  state: GameState,
+  side: "left" | "right",
+): EngineResult {
+  const player = state.world.player;
+  const room = state.world.rooms[player.roomId];
+  if (!room) return { state, error: "Player room not found" };
+
+  const exit = room.edgeExits?.[side];
+  if (!exit) return { state, error: `No edge exit on ${side} side` };
+
+  const targetRoom = state.world.rooms[exit.targetRoom];
+  if (!targetRoom) return { state, error: `Target room ${exit.targetRoom} not found` };
+
+  const spawnPos = targetRoom.spawnPoints[exit.spawnPoint] || targetRoom.spawnPoints["default"];
+  if (!spawnPos) return { state, error: "No spawn point in target room" };
+
+  const newPlayer: PlayerState = {
+    ...player,
+    roomId: exit.targetRoom,
+    position: spawnPos,
+    facing: side === "left" ? "left" : "right",
+  };
+
+  // Move carried item to new room
+  let newItems = state.world.items;
+  if (player.carryingItemId) {
+    const item = newItems[player.carryingItemId];
+    if (item) {
+      newItems = {
+        ...newItems,
+        [item.id]: { ...item, roomId: exit.targetRoom, position: spawnPos },
       };
     }
   }

@@ -179,6 +179,7 @@ export function applyAction(state: GameState, action: Action): EngineResult {
     // World actions
     case "MOVE_PLAYER":
     case "ENTER_DOOR":
+    case "EDGE_EXIT":
     case "BUY_ITEM":
     case "PICKUP_ITEM":
     case "DROP_ITEM":
@@ -206,8 +207,10 @@ export function applyAction(state: GameState, action: Action): EngineResult {
       );
     }
 
-    default:
-      return { state, error: "Unknown action type" };
+    default: {
+      const _exhaustive: never = action;
+      return { state, error: `Unknown action type: ${(_exhaustive as { type: string }).type}` };
+    }
   }
 }
 

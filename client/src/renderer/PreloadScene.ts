@@ -23,10 +23,11 @@ export class PreloadScene extends Phaser.Scene {
   preload() {
     // ── File-based asset loading ──
 
-    // Backgrounds
-    this.load.image("room-bg", "assets/backgrounds/room-datacenter.png");
-    this.load.image("room-exterior", "assets/backgrounds/room-exterior.png");
-    this.load.image("room-shop", "assets/backgrounds/room-shop.png");
+    // Backgrounds (one per location)
+    this.load.image("bg-checkpoint", "assets/backgrounds/checkpoint.png");
+    this.load.image("bg-yard", "assets/backgrounds/yard.png");
+    this.load.image("bg-storage", "assets/backgrounds/storage.png");
+    this.load.image("bg-datacenter", "assets/backgrounds/datacenter-interior.png");
 
     // Rack
     this.load.image("rack-frame", "assets/racks/rack-frame-42u.png");
