@@ -260,8 +260,12 @@ export class WorldScene extends Phaser.Scene {
     // Use real player sprite sheet or fallback
     if (this.textures.exists("player-walk")) {
       this.playerSprite = this.add.sprite(0, 0, "player-walk", 0);
-      // Scale down from 384x1024 to game-appropriate size (~60x160 → then display smaller)
-      this.playerSprite.setDisplaySize(60, 160);
+      // Each frame is 384x1024. Character is ~384x700 with whitespace above.
+      // Scale to ~56x150 preserving aspect ratio, then offset up so feet touch floor.
+      const scale = 90 / 384; // target ~90px wide
+      this.playerSprite.setScale(scale);
+      // Shift sprite up so feet align with container origin (floor)
+      this.playerSprite.setOrigin(0.5, 0.85);
 
       // Create walk animation
       this.anims.create({
@@ -298,7 +302,7 @@ export class WorldScene extends Phaser.Scene {
 
     this.physics.add.existing(this.player);
     this.playerBody = this.player.body as Phaser.Physics.Arcade.Body;
-    this.playerBody.setCollideWorldBounds(true);
+    this.playerBody.setCollideWorldBounds(false);
   }
 
   // --- Items ---
@@ -458,8 +462,8 @@ export class WorldScene extends Phaser.Scene {
 
     // Animation and facing
     if (vx !== 0) {
-      // Walking — the sprite faces left by default, so flip for right
-      if (vx > 0) this.playerSprite.setFlipX(true);
+      // Sprite faces right by default — flip when walking left
+      if (vx < 0) this.playerSprite.setFlipX(true);
       else this.playerSprite.setFlipX(false);
 
       if (this.anims.exists("walk") && this.playerSprite.anims.currentAnim?.key !== "walk") {
@@ -478,10 +482,20 @@ export class WorldScene extends Phaser.Scene {
     const conn = ROOM_CONNECTIONS[this.currentRoom];
     if (!conn) return;
 
-    if (this.player.x <= 10 && conn.left) {
-      this.transitionToRoom(conn.left.room, conn.left.interactableId, "right");
-    } else if (this.player.x >= GAME_W - 10 && conn.right) {
-      this.transitionToRoom(conn.right.room, conn.right.interactableId, "left");
+    if (this.player.x <= 20) {
+      if (conn.left) {
+        this.transitionToRoom(conn.left.room, conn.left.interactableId, "right");
+      } else {
+        // No room to the left — clamp
+        this.player.x = 20;
+      }
+    } else if (this.player.x >= GAME_W - 20) {
+      if (conn.right) {
+        this.transitionToRoom(conn.right.room, conn.right.interactableId, "left");
+      } else {
+        // No room to the right — clamp
+        this.player.x = GAME_W - 20;
+      }
     }
   }
 
