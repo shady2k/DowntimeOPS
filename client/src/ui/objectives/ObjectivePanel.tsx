@@ -7,39 +7,71 @@ export function ObjectivePanel() {
   // Always show — even after tutorial complete, show as a compact status bar
   if (!tutorial) return null;
 
-  // Post-tutorial: compact status
+  // Post-tutorial: milestone progress
   if (tutorial.tutorialComplete) {
+    const progression = state!.progression;
     const activeClients = Object.values(state!.clients).filter(
       (c) => c.status === "active" || c.status === "warning",
     ).length;
     const incidents = state!.alerts.filter(
       (a) => !a.acknowledged && a.severity === "critical",
     ).length;
+    const completedMilestones = progression.milestones.filter(
+      (m) => m.completed,
+    ).length;
+    const nextMilestone = progression.milestones.find((m) => !m.completed);
 
     return (
       <div
         style={{
-          padding: "8px 16px",
+          padding: "10px 16px",
           background: "#1a1a2e",
           borderBottom: "1px solid #333",
-          display: "flex",
-          gap: 12,
-          fontSize: 10,
-          color: "#666",
           fontFamily: "monospace",
         }}
       >
-        <span style={{ color: "#2ecc71" }}>
-          {activeClients} client{activeClients !== 1 ? "s" : ""} active
-        </span>
-        {incidents > 0 && (
-          <span style={{ color: "#e74c3c" }}>
-            {incidents} incident{incidents !== 1 ? "s" : ""}
+        {/* Status bar */}
+        <div
+          style={{
+            display: "flex",
+            gap: 12,
+            fontSize: 10,
+            color: "#666",
+            marginBottom: nextMilestone ? 6 : 0,
+          }}
+        >
+          <span style={{ color: "#2ecc71" }}>
+            {activeClients} client{activeClients !== 1 ? "s" : ""}
           </span>
+          {incidents > 0 && (
+            <span style={{ color: "#e74c3c" }}>
+              {incidents} incident{incidents !== 1 ? "s" : ""}
+            </span>
+          )}
+          <span>Rep: {state!.reputation.toFixed(0)}</span>
+          <span style={{ marginLeft: "auto", color: "#555" }}>
+            {completedMilestones}/{progression.milestones.length} milestones
+          </span>
+        </div>
+
+        {/* Next milestone */}
+        {nextMilestone && (
+          <div
+            style={{
+              padding: "4px 8px",
+              background: "#1a1a28",
+              borderLeft: "2px solid #9b59b6",
+              borderRadius: 2,
+              fontSize: 10,
+            }}
+          >
+            <span style={{ color: "#9b59b6" }}>Next: </span>
+            <span style={{ color: "#bbb" }}>{nextMilestone.title}</span>
+            <span style={{ color: "#555" }}>
+              {" "}— {nextMilestone.description}
+            </span>
+          </div>
         )}
-        <span>
-          Network: {tutorial.networkReady ? "OK" : "DEGRADED"}
-        </span>
       </div>
     );
   }

@@ -23,6 +23,7 @@ import {
   stepTracer as stepTracerSim,
 } from "./simulation/tracer";
 import { createInitialTutorial } from "./simulation/objectives";
+import { createInitialMilestones } from "./simulation/milestones";
 
 // --- Re-exports ---
 
@@ -112,6 +113,8 @@ export function createInitialState(): GameState {
         },
         satisfaction: 100,
         status: "prospect",
+        flavor: "A two-person team building a recipe app. Your first potential client!",
+        prospectTick: null, // starter client doesn't expire
       },
     },
     connections: {},
@@ -141,6 +144,7 @@ export function createInitialState(): GameState {
     monthlyRevenue: 0,
 
     tutorial: createInitialTutorial(),
+    progression: createInitialMilestones(),
   };
 }
 

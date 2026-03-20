@@ -196,15 +196,15 @@ Support the tactile rack loop with a clearer surrounding interface.
 ### Sprint 2.6 — Progression, Milestones, and Pressure
 Create reasons to keep building after the first solved network.
 
-- [ ] Add a milestone progression system tied to solved gameplay problems, not only money
-- [ ] Add milestone rewards: new equipment unlocks, new client tiers, new incident classes
-- [ ] Add authored early-game milestones: first client served, first month profitable, first incident resolved, first congested link
-- [ ] Gate new complexity behind milestones: simple hosting first, then isolation, then redundancy
-- [ ] Add contract urgency: prospect expiration and clearer opportunity-cost messaging
-- [ ] Add financial pressure metrics: burn rate, runway, monthly net, penalty exposure
-- [ ] Add a balancing pass for the starter economy so first success arrives quickly but failure still matters
-- [ ] Add client flavor text/archetypes so contracts feel like jobs, not rows in a table
-- [ ] Add reputation-based content pacing so stronger clients appear as a result of competence
+- [x] Add a milestone progression system tied to solved gameplay problems, not only money
+- [x] Add milestone rewards: new equipment unlocks, new client tiers, new incident classes
+- [x] Add authored early-game milestones: first client served, first month profitable, first incident resolved, first congested link
+- [x] Gate new complexity behind milestones: simple hosting first, then isolation, then redundancy
+- [x] Add contract urgency: prospect expiration and clearer opportunity-cost messaging
+- [x] Add financial pressure metrics: burn rate, runway, monthly net, penalty exposure
+- [x] Add a balancing pass for the starter economy so first success arrives quickly but failure still matters
+- [x] Add client flavor text/archetypes so contracts feel like jobs, not rows in a table
+- [x] Add reputation-based content pacing so stronger clients appear as a result of competence
 
 ### Sprint 2.7 — Asset Pipeline and Audio Preparation
 Set up production-friendly workflows so the look and feel can scale.

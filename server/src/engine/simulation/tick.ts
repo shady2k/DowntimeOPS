@@ -9,6 +9,7 @@ import {
 import { processEconomyTick } from "./economy";
 import { checkSla } from "./sla";
 import { evaluateObjectives } from "./objectives";
+import { evaluateMilestones } from "./milestones";
 import { generateProspect, shouldGenerateProspect } from "../config/clients";
 
 export function processTick(state: GameState): GameState {
@@ -35,8 +36,14 @@ export function processTick(state: GameState): GameState {
   // Evaluate tutorial objectives
   next = evaluateObjectives(next);
 
+  // Evaluate milestones (after objectives so survive_incident is tracked)
+  next = evaluateMilestones(next);
+
   // Client prospect generation
   next = generateClientsIfDue(next);
+
+  // Expire old prospects
+  next = expireProspects(next);
 
   // Trim log and alerts
   next = trimLogAndAlerts(next);
@@ -54,13 +61,18 @@ function generateClientsIfDue(state: GameState): GameState {
 
   if (!shouldGenerateProspect(state.tick, prospectCount)) return state;
 
-  const prospect = generateProspect(state.reputation, state.tick);
+  const prospect = generateProspect(
+    state.reputation,
+    state.tick,
+    state.progression.unlockedClientTiers,
+  );
+
   const newLog = [
     ...state.log,
     {
       id: `log-${crypto.randomUUID()}`,
       tick: state.tick,
-      message: `New prospect: ${prospect.name} (${prospect.contract.bandwidthMbps} Mbps, $${prospect.contract.monthlyRevenue}/mo)`,
+      message: `New prospect: ${prospect.name} (${prospect.type}, ${prospect.contract.bandwidthMbps} Mbps, $${prospect.contract.monthlyRevenue}/mo)`,
       category: "client" as const,
     },
   ];
@@ -70,6 +82,37 @@ function generateClientsIfDue(state: GameState): GameState {
     clients: { ...state.clients, [prospect.id]: prospect },
     log: newLog,
   };
+}
+
+function expireProspects(state: GameState): GameState {
+  const expired: string[] = [];
+  for (const client of Object.values(state.clients)) {
+    if (
+      client.status === "prospect" &&
+      client.prospectTick !== null &&
+      state.tick - client.prospectTick >= BALANCE.PROSPECT_EXPIRE_TICKS
+    ) {
+      expired.push(client.id);
+    }
+  }
+
+  if (expired.length === 0) return state;
+
+  const newClients = { ...state.clients };
+  const newLog = [...state.log];
+
+  for (const id of expired) {
+    const client = newClients[id];
+    newLog.push({
+      id: `log-${crypto.randomUUID()}`,
+      tick: state.tick,
+      message: `Prospect expired: ${client.name} found another provider`,
+      category: "client" as const,
+    });
+    delete newClients[id];
+  }
+
+  return { ...state, clients: newClients, log: newLog };
 }
 
 function trimLogAndAlerts(state: GameState): GameState {

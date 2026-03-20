@@ -1,6 +1,8 @@
 import { useGameStore } from "../../store/gameStore";
 import { rpcClient } from "../../rpc/client";
 
+const PROSPECT_EXPIRE_TICKS = 240; // match server BALANCE
+
 function clientTypeBadge(type: string): { label: string; color: string } {
   switch (type) {
     case "startup":
@@ -94,6 +96,18 @@ export function ClientPanel() {
           </h4>
           {prospects.map((client) => {
             const badge = clientTypeBadge(client.type);
+            const ticksLeft =
+              client.prospectTick !== null
+                ? Math.max(
+                    0,
+                    PROSPECT_EXPIRE_TICKS - (state.tick - client.prospectTick),
+                  )
+                : null;
+            const expiryPct =
+              ticksLeft !== null ? ticksLeft / PROSPECT_EXPIRE_TICKS : 1;
+            const expiryColor =
+              expiryPct > 0.5 ? "#f39c12" : expiryPct > 0.2 ? "#e67e22" : "#e74c3c";
+
             return (
               <div
                 key={client.id}
@@ -111,7 +125,7 @@ export function ClientPanel() {
                     display: "flex",
                     alignItems: "center",
                     gap: 6,
-                    marginBottom: 4,
+                    marginBottom: 2,
                   }}
                 >
                   <span style={{ fontWeight: "bold", fontSize: 11 }}>
@@ -128,7 +142,53 @@ export function ClientPanel() {
                   >
                     {badge.label}
                   </span>
+                  {ticksLeft !== null && (
+                    <span
+                      style={{
+                        fontSize: 8,
+                        color: expiryColor,
+                        marginLeft: "auto",
+                      }}
+                    >
+                      {Math.ceil(ticksLeft / 60)}m left
+                    </span>
+                  )}
                 </div>
+                {/* Flavor text */}
+                {client.flavor && (
+                  <div
+                    style={{
+                      fontSize: 9,
+                      color: "#666",
+                      fontStyle: "italic",
+                      marginBottom: 4,
+                      lineHeight: 1.3,
+                    }}
+                  >
+                    {client.flavor}
+                  </div>
+                )}
+                {/* Expiry bar */}
+                {ticksLeft !== null && (
+                  <div
+                    style={{
+                      height: 2,
+                      background: "#333",
+                      borderRadius: 1,
+                      marginBottom: 4,
+                      overflow: "hidden",
+                    }}
+                  >
+                    <div
+                      style={{
+                        width: `${expiryPct * 100}%`,
+                        height: "100%",
+                        background: expiryColor,
+                        transition: "width 1s linear",
+                      }}
+                    />
+                  </div>
+                )}
                 <div
                   style={{
                     display: "grid",

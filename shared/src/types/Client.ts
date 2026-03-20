@@ -15,4 +15,6 @@ export interface Client {
   contract: Contract;
   satisfaction: number;
   status: "prospect" | "active" | "warning" | "churned";
+  flavor: string;
+  prospectTick: number | null; // tick when this client became a prospect (for expiry display)
 }

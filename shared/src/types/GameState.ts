@@ -8,6 +8,7 @@ import type { Client } from "./Client";
 import type { Connection } from "./Connection";
 import type { Alert, LogEntry, Uplink } from "./Common";
 import type { TutorialState } from "./Objective";
+import type { MilestoneState } from "./Milestone";
 
 export interface GameState {
   tick: number;
@@ -33,4 +34,5 @@ export interface GameState {
   monthlyRevenue: number;
 
   tutorial: TutorialState;
+  progression: MilestoneState;
 }
