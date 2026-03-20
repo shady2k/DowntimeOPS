@@ -30,6 +30,28 @@ export function TopBar() {
       </span>
       <span>Rep: {state.reputation.toFixed(0)}</span>
 
+      {/* Net cashflow */}
+      {(() => {
+        const net = state.monthlyRevenue - state.monthlyExpenses;
+        const color = net > 0 ? "#2ecc71" : net < 0 ? "#e74c3c" : "#666";
+        return (
+          <span style={{ color }}>
+            Net: {net >= 0 ? "+" : ""}${net.toFixed(0)}/mo
+          </span>
+        );
+      })()}
+
+      {/* Runway warning */}
+      {state.monthlyRevenue < state.monthlyExpenses && state.money > 0 && (
+        <span style={{ color: "#e67e22", fontSize: 11 }}>
+          Runway:{" "}
+          {Math.floor(
+            state.money / (state.monthlyExpenses - state.monthlyRevenue),
+          )}
+          mo
+        </span>
+      )}
+
       <div style={{ marginLeft: "auto", display: "flex", gap: 4 }}>
         {[0, 1, 2, 3].map((s) => (
           <button

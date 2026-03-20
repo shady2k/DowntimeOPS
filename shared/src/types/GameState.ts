@@ -7,6 +7,7 @@ import type { FirewallRule } from "./FirewallRule";
 import type { Client } from "./Client";
 import type { Connection } from "./Connection";
 import type { Alert, LogEntry, Uplink } from "./Common";
+import type { TutorialState } from "./Objective";
 
 export interface GameState {
   tick: number;
@@ -30,4 +31,6 @@ export interface GameState {
   uplinks: Uplink[];
   monthlyExpenses: number;
   monthlyRevenue: number;
+
+  tutorial: TutorialState;
 }

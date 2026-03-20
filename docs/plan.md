@@ -1,6 +1,23 @@
 # DowntimeOPS — Development Plan
 
-**Status:** Phase 1 (vertical slice) — core loop implemented
+**Status:** Phase 1 complete, entering Phase 2 (game feel & visual identity)
+
+---
+
+## Art Direction
+
+Visual identity decisions. DowntimeOPS should look like a real game, not an internal network tool.
+
+- **Visual approach:** Layered 2D composition inspired by Uncle Chop's Rocket Shop — background room → rack frame → device faceplates → cables → effects/VFX
+- **Style influences:** Prison Architect (readability, strong silhouettes), Uncle Chop's (tactile diegetic interface, physical manipulation), Factorio (build-optimize loop)
+- **Camera:** Front-facing rack elevation for rack gameplay; no 3D, no isometric in rack view
+- **Aesthetic:** Dark datacenter room, cool LED glow, cable clutter/control, industrial rails, screws, faceplates
+- **Device language:** Sprite-based servers, switches, routers with readable front panels, visible port LEDs, fan grilles, status lights
+- **Interaction principle:** Player manipulates ports, devices, and cables directly in the rack; abstract menu interactions are secondary
+- **Repair fantasy:** Incidents should be visually legible and tactile to fix under pressure — the Uncle Chop's "diagnose and fix with your hands" feel
+- **Animation tone:** Subtle idle motion (fans, LEDs), strong failure states (sparks, smoke), satisfying placement/connect feedback
+- **Sound hooks:** Every major physical interaction and incident state exposes a clear audio event for later sound design
+- **Phaser layer stack:** Background (room art) → Rack frame → Device sprites → Cable sprites → Effects/particles → Hit targets (invisible, oversized)
 
 ---
 
@@ -99,23 +116,110 @@ Player can: open the game → place devices in a rack → cable them → accept 
 
 ---
 
-## Phase 2 — UI Polish & Content
-Make it look and feel like a real game.
+## Phase 2 — Game Feel & Visual Identity
+Transform the vertical slice from a debug visualization into an actual game: tactile rack interactions, layered 2D art, readable incidents, and a guided first-session loop.
 
-- [ ] Equipment catalog: variety of devices with real stats, costs, port configurations
-- [ ] Polished shop UI with categories, specs, comparison
-- [ ] Device panel: detailed port status, stats, configuration
-- [ ] Dashboard: financial overview, revenue vs expenses graph
-- [ ] SLA dashboard: uptime per client, violation history
-- [ ] Client list: contract details, satisfaction, churn risk
-- [ ] Alert bar and scrolling system log
-- [ ] Connection inspector polish: detailed bandwidth breakdown, filtering, sorting
-- [ ] Save/load UI (backed by JsonFileStorage)
-- [ ] Autosave
-- [ ] Game balance tuning (equipment costs, client revenue, failure rates)
-- [ ] Tutorial / first-time guidance
-- [ ] Sound effects (place device, cable connect, alert, failure)
-- [ ] Visual polish: better sprites, animations, transitions
+### Sprint 2.1 — First-Session Playability
+Establish the minimum viable fun loop so a new player knows what to do in 5 minutes.
+
+- [ ] Add server-driven objective system with explicit milestones: buy router, buy switch, buy server, connect devices, accept first client, survive first incident
+- [ ] Add objective/tutorial state to shared types, server state, and client sync
+- [ ] Script a first-session tutorial flow with step-by-step guidance instead of passive help text
+- [ ] Spawn a guaranteed starter client immediately on new game start
+- [ ] Gate random prospects until the starter contract is completed or expired
+- [ ] Gate random failures until the player has seen traffic flow at least once
+- [ ] Script the first failure to occur after the first successful client activation
+- [ ] Add server-side "network ready" checks: router present, server present, valid path to uplink, client-capable topology
+- [ ] Surface readiness state in the HUD and tutorial/objective panel
+- [ ] Rewrite empty-state messaging in panels to explain why revenue is zero and what the next action is
+- [ ] Add player-facing alert categories: tutorial, prospect, outage, capacity, SLA
+- [ ] Add visible monthly cashflow delta and runway hint in the HUD
+
+### Sprint 2.2 — Layered 2D Rendering Foundation
+Replace placeholder debug graphics with a sprite-based layered rack scene.
+
+- [ ] Create a Phaser asset manifest/preload pipeline for rack art, device sprites, cable sprites, LEDs, and FX
+- [ ] Add a static painted datacenter room background layer behind the rack
+- [ ] Replace procedural rack frame drawing with rack shell art: rails, screw holes, depth shading, labels
+- [ ] Replace colored device rectangles with composed sprite-based device faceplates
+- [ ] Define device visual prefabs for server, switch, router, and future firewall/patch panel variants
+- [ ] Add device state overlays for selected, idle, active, degraded, and failed states
+- [ ] Convert port indicators into visible LED/port sprites with larger hidden hit areas
+- [ ] Add rack slot highlights and placement ghost sprites for valid/invalid U positions
+- [ ] Refactor the Phaser rack renderer into explicit layers: background, rack, devices, cables, effects, hit targets
+- [ ] Make the Phaser canvas responsive so the rack fills the main play area instead of a fixed debug-sized viewport
+- [ ] Add camera zoom and pan tuned for rack work while keeping all interactions readable
+
+### Sprint 2.3 — Tactile Rack Interactions
+Move primary gameplay into the rack scene so the player learns by manipulating hardware directly.
+
+- [ ] Implement click-to-cable directly in the rack scene: select source port, highlight valid targets, click destination to connect
+- [ ] Add cable preview rendering while hovering a target port
+- [ ] Add disconnect interaction from the rack scene via cable or port context action
+- [ ] Implement drag-to-place equipment from the shop into explicit rack U slots
+- [ ] Add placement snap, occupancy validation, and visual rejection feedback for blocked slots
+- [ ] Add device hover tooltips with critical data only: type, status, power, connected ports
+- [ ] Add client-to-path highlighting: selecting a client glows its active route through the rack
+- [ ] Add incident targeting: selecting an alert highlights the failing device, port, or link in the rack
+- [ ] Reduce dependence on side tabs by showing context-sensitive actions based on current selection
+- [ ] Keep panel workflows as secondary inspectors, not the primary place to play
+
+### Sprint 2.4 — Traffic, Failures, and Visual Feedback
+Make the network state visible and legible without opening debug panels.
+
+- [ ] Add animated traffic pulses moving across active links
+- [ ] Scale traffic pulse rate and intensity by link utilization
+- [ ] Add link state visuals: idle dim, active glow, congested amber, failed red
+- [ ] Replace abstract bezier-only cables with textured cable sprites or segmented cable paths
+- [ ] Add blinking link LEDs on connected ports and device status LEDs on active hardware
+- [ ] Add failure VFX for ports/devices: sparks, smoke puffs, warning flashes, intermittent flicker
+- [ ] Add repair completion feedback: flash reset, LED recovery, traffic restoration pulse
+- [ ] Add device placement animation: slide-in/snap-in with subtle bounce
+- [ ] Add selection/highlight treatment that feels physical rather than UI-like
+- [ ] Add connection restoration feedback when a repaired path comes back online
+- [ ] Add renderer-level audio event hooks for place, connect, disconnect, alert, fail, repair, and revenue events
+
+### Sprint 2.5 — UI Restructure and Onboarding
+Support the tactile rack loop with a clearer surrounding interface.
+
+- [ ] Add a persistent objective/tutorial panel in React
+- [ ] Add a tutorial overlay/callout system that can spotlight UI and rack interactions
+- [ ] Rework the right panel default state to show objectives, starter contract, and current blockers
+- [ ] Rework the client panel to explain prospect urgency, contract value, and activation state
+- [ ] Rework the top bar to prioritize net cashflow, reputation impact, and current incident status
+- [ ] Add a scrolling event log or expandable operations feed for readable incident history
+- [ ] Rework alert bar copy to use player-facing language instead of debug/system phrasing
+- [ ] Add a first-revenue celebration moment: alert, animation, and obvious state change
+- [ ] Add save/load UI backed by existing storage
+- [ ] Add autosave and visible save-state feedback
+
+### Sprint 2.6 — Progression, Milestones, and Pressure
+Create reasons to keep building after the first solved network.
+
+- [ ] Add a milestone progression system tied to solved gameplay problems, not only money
+- [ ] Add milestone rewards: new equipment unlocks, new client tiers, new incident classes
+- [ ] Add authored early-game milestones: first client served, first month profitable, first incident resolved, first congested link
+- [ ] Gate new complexity behind milestones: simple hosting first, then isolation, then redundancy
+- [ ] Add contract urgency: prospect expiration and clearer opportunity-cost messaging
+- [ ] Add financial pressure metrics: burn rate, runway, monthly net, penalty exposure
+- [ ] Add a balancing pass for the starter economy so first success arrives quickly but failure still matters
+- [ ] Add client flavor text/archetypes so contracts feel like jobs, not rows in a table
+- [ ] Add reputation-based content pacing so stronger clients appear as a result of competence
+
+### Sprint 2.7 — Asset Pipeline and Audio Preparation
+Set up production-friendly workflows so the look and feel can scale.
+
+- [ ] Create asset directory structure: `client/public/assets/{backgrounds,racks,devices,cables,fx,ui}`
+- [ ] Define naming/versioning scheme for sprite atlases and layered device parts
+- [ ] Document target sprite scale, palette, and export rules for consistent art production
+- [ ] Add placeholder-to-final asset swap points so engineering can progress before all art is finished
+- [ ] Add renderer abstractions for device prefabs and cable prefabs instead of hardcoded scene drawing
+- [ ] Add a sound event registry and trigger points even if final audio assets are not ready
+- [ ] Add performance budgets for particles, animated links, and layered sprite counts
+- [ ] Test the rack scene at dense occupancy to ensure the layered approach remains readable and performant
+
+### Phase 2 Done When
+New players can start a game and understand the next step without external explanation. The rack is a tactile, sprite-based play space with visible devices, cables, LEDs, traffic, and failure states. The first session teaches the build → connect → serve → fail → fix loop through direct interaction, and the game has a clear visual identity with enough progression pressure to make the second hour desirable.
 
 ---
 

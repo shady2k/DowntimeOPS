@@ -11,6 +11,7 @@ import { CablePanel } from "./ui/panels/CablePanel";
 import { ClientPanel } from "./ui/panels/ClientPanel";
 import { TracerPanel } from "./ui/panels/TracerPanel";
 import { ConnectionInspector } from "./ui/panels/ConnectionInspector";
+import { ObjectivePanel } from "./ui/objectives/ObjectivePanel";
 
 type SideTab = "shop" | "device" | "cable" | "clients" | "tracer" | "connections";
 
@@ -56,6 +57,7 @@ function App() {
       canvas={<PhaserGame />}
       sidePanel={
         <>
+          <ObjectivePanel />
           <div
             style={{
               display: "flex",

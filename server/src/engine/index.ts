@@ -22,6 +22,7 @@ import {
   startTracer as startTracerSim,
   stepTracer as stepTracerSim,
 } from "./simulation/tracer";
+import { createInitialTutorial } from "./simulation/objectives";
 
 // --- Re-exports ---
 
@@ -95,7 +96,24 @@ export function createInitialState(): GameState {
     vlans: {},
     routes: [],
     firewallRules: [],
-    clients: {},
+    clients: {
+      "client-starter": {
+        id: "client-starter",
+        name: "PicoApp",
+        type: "startup",
+        contract: {
+          bandwidthMbps: 10,
+          uptimeSla: 99.0,
+          isolationRequired: false,
+          dedicatedHardware: false,
+          monthlyRevenue: 150,
+          penaltyPerViolation: 100,
+          durationMonths: 6,
+        },
+        satisfaction: 100,
+        status: "prospect",
+      },
+    },
     connections: {},
 
     alerts: [],
@@ -121,6 +139,8 @@ export function createInitialState(): GameState {
     ],
     monthlyExpenses: 0,
     monthlyRevenue: 0,
+
+    tutorial: createInitialTutorial(),
   };
 }
 
@@ -538,6 +558,35 @@ function repairPort(
 
   // Try to re-establish connections
   newState = reestablishConnections(newState);
+
+  // Mark survive_incident objective if tutorial is active and we have active clients
+  if (!newState.tutorial.tutorialComplete) {
+    const hasActiveClients = Object.values(newState.clients).some(
+      (c) => c.status === "active" || c.status === "warning",
+    );
+    if (hasActiveClients) {
+      const objectives = newState.tutorial.objectives.map((o) =>
+        o.id === "survive_incident" && !o.completed
+          ? { ...o, completed: true, completedAtTick: newState.tick }
+          : o,
+      );
+      const currentObjectiveIndex = objectives.findIndex(
+        (o) => !o.completed,
+      );
+      newState = {
+        ...newState,
+        tutorial: {
+          ...newState.tutorial,
+          objectives,
+          currentObjectiveIndex:
+            currentObjectiveIndex === -1
+              ? objectives.length - 1
+              : currentObjectiveIndex,
+          tutorialComplete: objectives.every((o) => o.completed),
+        },
+      };
+    }
+  }
 
   return { state: newState };
 }

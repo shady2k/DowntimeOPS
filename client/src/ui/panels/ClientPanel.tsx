@@ -17,6 +17,13 @@ export function ClientPanel() {
         CLIENTS
       </h3>
 
+      {prospects.length === 0 && (
+        <p style={{ fontSize: 10, color: "#555", lineHeight: 1.5 }}>
+          No prospects yet. Build your network (router + switch + server, all
+          cabled) and clients will come knocking.
+        </p>
+      )}
+
       {prospects.length > 0 && (
         <>
           <h4 style={{ margin: "0 0 4px", fontSize: 11, color: "#f39c12" }}>
@@ -89,7 +96,11 @@ export function ClientPanel() {
         Active Contracts ({active.length})
       </h4>
       {active.length === 0 && (
-        <p style={{ fontSize: 10, color: "#555" }}>No active contracts</p>
+        <p style={{ fontSize: 10, color: "#555" }}>
+          {prospects.length > 0
+            ? "Accept a prospect above to start earning revenue!"
+            : "No active contracts"}
+        </p>
       )}
       {active.map((client) => {
         const connCount = Object.values(state.connections).filter(

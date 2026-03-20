@@ -5,6 +5,9 @@ export function generateFailures(
   state: GameState,
   rng: () => number = Math.random,
 ): GameState {
+  // Don't generate random failures until the player has activated their first client
+  if (!state.tutorial.firstClientActivated) return state;
+
   let devicesChanged = false;
   const newDevices = { ...state.devices };
   const newAlerts = [...state.alerts];

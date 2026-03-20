@@ -88,6 +88,15 @@ function buildNetworkWithClient() {
   result = applyAction(state, { type: "ACCEPT_CLIENT", clientId });
   state = result.state;
 
+  // Mark tutorial firstClientActivated so failure generator is active
+  state = {
+    ...state,
+    tutorial: {
+      ...state.tutorial,
+      firstClientActivated: true,
+    },
+  };
+
   return { state, router, sw, server, clientId };
 }
 

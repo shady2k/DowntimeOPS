@@ -15,3 +15,4 @@ export type { Subnet } from "./Subnet";
 export type { Route } from "./Route";
 export type { FirewallRule } from "./FirewallRule";
 export type { Alert, LogEntry, Uplink, SaveInfo } from "./Common";
+export type { Objective, ObjectiveId, TutorialState } from "./Objective";
