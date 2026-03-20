@@ -209,14 +209,14 @@ Create reasons to keep building after the first solved network.
 ### Sprint 2.7 — Asset Pipeline and Audio Preparation
 Set up production-friendly workflows so the look and feel can scale.
 
-- [ ] Create asset directory structure: `client/public/assets/{backgrounds,racks,devices,cables,fx,ui}`
-- [ ] Define naming/versioning scheme for sprite atlases and layered device parts
-- [ ] Document target sprite scale, palette, and export rules for consistent art production
-- [ ] Add placeholder-to-final asset swap points so engineering can progress before all art is finished
-- [ ] Add renderer abstractions for device prefabs and cable prefabs instead of hardcoded scene drawing
-- [ ] Add a sound event registry and trigger points even if final audio assets are not ready
-- [ ] Add performance budgets for particles, animated links, and layered sprite counts
-- [ ] Test the rack scene at dense occupancy to ensure the layered approach remains readable and performant
+- [x] Create asset directory structure: `client/public/assets/{backgrounds,racks,devices,cables,fx,ui}`
+- [x] Define naming/versioning scheme for sprite atlases and layered device parts
+- [x] Document target sprite scale, palette, and export rules for consistent art production
+- [x] Add placeholder-to-final asset swap points so engineering can progress before all art is finished
+- [x] Add renderer abstractions for device prefabs and cable prefabs instead of hardcoded scene drawing
+- [x] Add a sound event registry and trigger points even if final audio assets are not ready
+- [x] Add performance budgets for particles, animated links, and layered sprite counts
+- [x] Test the rack scene at dense occupancy to ensure the layered approach remains readable and performant
 
 ### Phase 2 Done When
 New players can start a game and understand the next step without external explanation. The rack is a tactile, sprite-based play space with visible devices, cables, LEDs, traffic, and failure states. The first session teaches the build → connect → serve → fail → fix loop through direct interaction, and the game has a clear visual identity with enough progression pressure to make the second hour desirable.

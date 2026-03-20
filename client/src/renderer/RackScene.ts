@@ -4,6 +4,8 @@ import { useGameStore } from "../store/gameStore";
 import { rpcClient } from "../rpc/client";
 import { RACK, PORT, PALETTE } from "./TextureGenerator";
 import { emitAudioEvent } from "./AudioEvents";
+import { getCableStyle, getCableExitX, drawCablePath, interpolateCablePath, getPulseColor } from "./CablePrefab";
+import { PerfMonitor } from "./PerfMonitor";
 
 // Layout
 const RACK_X = 370;
@@ -105,6 +107,9 @@ export class RackScene extends Phaser.Scene {
   private prevFailedDeviceIds = new Set<string>();
   private prevFailedPortKeys = new Set<string>();
 
+  // Performance monitoring
+  private perfMonitor = new PerfMonitor();
+
   constructor() {
     super({ key: "RackScene" });
   }
@@ -183,6 +188,7 @@ export class RackScene extends Phaser.Scene {
 
   update(_time: number, delta: number) {
     const dt = delta / 1000;
+    this.perfMonitor.recordFrameTime(delta);
     this.updateTrafficPulses(dt);
     this.updateFailureVfx(dt);
     this.updatePlacementAnimations(dt);
@@ -458,12 +464,7 @@ export class RackScene extends Phaser.Scene {
         (p) => p.linkId === link.id,
       ).length;
 
-      const color =
-        utilization > 0.9
-          ? PALETTE.cableCongested
-          : utilization > 0.5
-            ? 0x66bb88
-            : PALETTE.portUp;
+      const color = getPulseColor(utilization);
 
       for (let i = existing; i < targetCount; i++) {
         this.trafficPulses.push({
@@ -580,42 +581,14 @@ export class RackScene extends Phaser.Scene {
       const posB = this.getPortWorldPos(devB, link.portB.portIndex);
       if (!posA || !posB) continue;
 
-      // Calculate position along the L-shaped cable path
-      const pos = this.interpolateCablePath(posA, posB, pulse.progress);
+      const exitX = getCableExitX(RACK_X + RACK.WIDTH, posA.y, posB.y);
+      const pos = interpolateCablePath(posA, posB, exitX, pulse.progress);
 
-      // Pulse dot with glow
       const size = 2 + (link.currentLoadMbps / Math.max(link.maxBandwidthMbps, 1)) * 2;
       this.pulseGraphics.fillStyle(pulse.color, 0.3);
       this.pulseGraphics.fillCircle(pos.x, pos.y, size + 2);
       this.pulseGraphics.fillStyle(pulse.color, 0.8);
       this.pulseGraphics.fillCircle(pos.x, pos.y, size);
-    }
-  }
-
-  private interpolateCablePath(
-    posA: { x: number; y: number },
-    posB: { x: number; y: number },
-    t: number,
-  ): { x: number; y: number } {
-    const exitX =
-      RACK_X + RACK.WIDTH + 20 + Math.abs(posA.y - posB.y) * 0.25;
-
-    // Three segments: A→exitX, exitX down, exitX→B
-    const seg1Len = exitX - posA.x;
-    const seg2Len = Math.abs(posB.y - posA.y);
-    const seg3Len = exitX - posB.x;
-    const totalLen = seg1Len + seg2Len + seg3Len;
-
-    const dist = t * totalLen;
-
-    if (dist <= seg1Len) {
-      return { x: posA.x + dist, y: posA.y };
-    } else if (dist <= seg1Len + seg2Len) {
-      const segT = (dist - seg1Len) / seg2Len;
-      return { x: exitX, y: posA.y + (posB.y - posA.y) * segT };
-    } else {
-      const segT = (dist - seg1Len - seg2Len) / seg3Len;
-      return { x: exitX - segT * seg3Len, y: posB.y };
     }
   }
 
@@ -1239,70 +1212,9 @@ export class RackScene extends Phaser.Scene {
         ? link.currentLoadMbps / link.maxBandwidthMbps
         : 0;
 
-    // Link state colors
-    let color: number;
-    let alpha: number;
-    let lineWidth: number;
-
-    if (isHighlighted) {
-      color = PALETTE.highlight;
-      alpha = 1;
-      lineWidth = 3;
-    } else if (link.status === "cut") {
-      color = PALETTE.cableCut;
-      alpha = 0.8;
-      lineWidth = 2.5;
-    } else if (utilization > 0.9) {
-      // Congested — amber with pulse
-      color = PALETTE.cableCongested;
-      alpha = 0.7 + Math.sin(this.time.now * 0.004) * 0.15;
-      lineWidth = 3;
-    } else if (utilization > 0) {
-      // Active — brighter glow proportional to load
-      color = PALETTE.cable;
-      alpha = 0.4 + utilization * 0.5;
-      lineWidth = 2.5;
-    } else {
-      // Idle — dim
-      color = PALETTE.cable;
-      alpha = 0.2;
-      lineWidth = 2;
-    }
-
-    const exitX =
-      RACK_X + RACK.WIDTH + 20 + Math.abs(posA.y - posB.y) * 0.25;
-
-    // Cable shadow (subtle depth)
-    this.cableGraphics.lineStyle(lineWidth + 1, 0x000000, alpha * 0.15);
-    this.cableGraphics.beginPath();
-    this.cableGraphics.moveTo(posA.x + 1, posA.y + 1);
-    this.cableGraphics.lineTo(exitX + 1, posA.y + 1);
-    this.cableGraphics.lineTo(exitX + 1, posB.y + 1);
-    this.cableGraphics.lineTo(posB.x + 1, posB.y + 1);
-    this.cableGraphics.strokePath();
-
-    // Main cable
-    this.cableGraphics.lineStyle(lineWidth, color, alpha);
-    this.cableGraphics.beginPath();
-    this.cableGraphics.moveTo(posA.x, posA.y);
-    this.cableGraphics.lineTo(exitX, posA.y);
-    this.cableGraphics.lineTo(exitX, posB.y);
-    this.cableGraphics.lineTo(posB.x, posB.y);
-    this.cableGraphics.strokePath();
-
-    // Cable highlight (top edge, simulates sheen)
-    if (alpha > 0.3) {
-      this.cableGraphics.lineStyle(1, 0xffffff, alpha * 0.08);
-      this.cableGraphics.beginPath();
-      this.cableGraphics.moveTo(posA.x, posA.y - 1);
-      this.cableGraphics.lineTo(exitX, posA.y - 1);
-      this.cableGraphics.strokePath();
-    }
-
-    // Endpoint dots
-    this.cableGraphics.fillStyle(color, alpha);
-    this.cableGraphics.fillCircle(posA.x, posA.y, 2.5);
-    this.cableGraphics.fillCircle(posB.x, posB.y, 2.5);
+    const style = getCableStyle(utilization, link.status, isHighlighted, this.time.now);
+    const exitX = getCableExitX(RACK_X + RACK.WIDTH, posA.y, posB.y);
+    drawCablePath(this.cableGraphics, posA, posB, exitX, style);
   }
 
   private getPortWorldPos(

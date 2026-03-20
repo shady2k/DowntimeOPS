@@ -2,12 +2,18 @@ import Phaser from "phaser";
 import { generateTextures } from "./TextureGenerator";
 
 /**
- * Preload scene: generates placeholder textures and loads any file-based
- * assets before transitioning to the RackScene.
+ * Asset preload scene.
  *
- * When real art is ready, add this.load.image() / this.load.spritesheet()
- * calls in preload() using the same texture keys. The generated textures
- * will be overwritten by the loaded files automatically.
+ * Two-stage asset loading:
+ * 1. Load file-based assets (real art) — these take priority
+ * 2. Generate placeholder textures for any keys not loaded from files
+ *
+ * To swap a placeholder for real art:
+ * 1. Place the PNG in client/public/assets/{category}/
+ * 2. Uncomment or add the corresponding load call below
+ * 3. The loaded texture overrides the generated placeholder automatically
+ *
+ * See client/public/assets/ASSET_GUIDE.md for naming, sizing, and palette docs.
  */
 export class PreloadScene extends Phaser.Scene {
   constructor() {
@@ -15,14 +21,53 @@ export class PreloadScene extends Phaser.Scene {
   }
 
   preload() {
-    // Future: load real assets here
-    // this.load.image("room-bg", "assets/backgrounds/datacenter-room.png");
-    // this.load.image("rack-frame", "assets/racks/rack-42u.png");
+    // ── File-based asset loading (uncomment when real art is ready) ──
+    //
+    // Backgrounds
+    // this.load.image("room-bg", "assets/backgrounds/room-datacenter.png");
+    //
+    // Rack
+    // this.load.image("rack-frame", "assets/racks/rack-frame-42u.png");
+    //
+    // Devices (individual images)
+    // this.load.image("device-server", "assets/devices/device-server-1u.png");
+    // this.load.image("device-switch", "assets/devices/device-switch-24p.png");
+    // this.load.image("device-router", "assets/devices/device-router-1u.png");
+    // this.load.image("device-firewall", "assets/devices/device-firewall-1u.png");
+    //
+    // Devices (atlas — use this instead of individual images for production)
     // this.load.atlas("devices", "assets/devices/devices.png", "assets/devices/devices.json");
+    //
+    // Overlays
+    // this.load.image("overlay-selected", "assets/devices/overlay-selected.png");
+    // this.load.image("overlay-active", "assets/devices/overlay-active.png");
+    // this.load.image("overlay-degraded", "assets/devices/overlay-degraded.png");
+    // this.load.image("overlay-failed", "assets/devices/overlay-failed.png");
+    //
+    // Ports
+    // this.load.image("port-up", "assets/devices/port-up.png");
+    // this.load.image("port-down", "assets/devices/port-down.png");
+    // this.load.image("port-err", "assets/devices/port-err.png");
+    // this.load.image("port-off", "assets/devices/port-off.png");
+    // this.load.image("port-connected", "assets/devices/port-connected.png");
+    //
+    // Slot highlights
+    // this.load.image("slot-valid", "assets/ui/slot-valid.png");
+    // this.load.image("slot-invalid", "assets/ui/slot-invalid.png");
+    // this.load.image("slot-hover", "assets/ui/slot-hover.png");
+    //
+    // FX
+    // this.load.image("fx-spark", "assets/fx/spark-01.png");
+    // this.load.image("fx-smoke", "assets/fx/smoke-01.png");
+    //
+    // Audio (when ready)
+    // this.load.audio("sfx-place", "assets/audio/device-place.ogg");
+    // this.load.audio("sfx-cable", "assets/audio/cable-connect.ogg");
+    // this.load.audio("sfx-alert", "assets/audio/alert-fire.ogg");
   }
 
   create() {
-    // Generate placeholder textures for any keys not loaded from files
+    // Generate placeholder textures for any keys not yet loaded from files
     generateTextures(this);
 
     this.scene.start("RackScene");
