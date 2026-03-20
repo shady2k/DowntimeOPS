@@ -1,4 +1,5 @@
 import { useGameStore } from "../../store/gameStore";
+import { THEME, cardStyle, statusDot } from "../theme";
 
 export function ObjectivePanel() {
   const state = useGameStore((s) => s.state);
@@ -25,9 +26,9 @@ export function ObjectivePanel() {
       <div
         style={{
           padding: "10px 16px",
-          background: "#1a1a2e",
-          borderBottom: "1px solid #333",
-          fontFamily: "monospace",
+          background: THEME.colors.bgPanel,
+          borderBottom: `1px solid ${THEME.colors.borderDark}`,
+          fontFamily: THEME.fonts.body,
         }}
       >
         {/* Status bar */}
@@ -36,20 +37,20 @@ export function ObjectivePanel() {
             display: "flex",
             gap: 12,
             fontSize: 10,
-            color: "#666",
+            color: THEME.colors.textDim,
             marginBottom: nextMilestone ? 6 : 0,
           }}
         >
-          <span style={{ color: "#2ecc71" }}>
+          <span style={{ color: THEME.colors.success }}>
             {activeClients} client{activeClients !== 1 ? "s" : ""}
           </span>
           {incidents > 0 && (
-            <span style={{ color: "#e74c3c" }}>
+            <span style={{ color: THEME.colors.danger }}>
               {incidents} incident{incidents !== 1 ? "s" : ""}
             </span>
           )}
           <span>Rep: {state!.reputation.toFixed(0)}</span>
-          <span style={{ marginLeft: "auto", color: "#555" }}>
+          <span style={{ marginLeft: "auto", color: THEME.colors.textDim }}>
             {completedMilestones}/{progression.milestones.length} milestones
           </span>
         </div>
@@ -58,16 +59,15 @@ export function ObjectivePanel() {
         {nextMilestone && (
           <div
             style={{
+              ...cardStyle(THEME.colors.purple),
               padding: "4px 8px",
-              background: "#1a1a28",
-              borderLeft: "2px solid #9b59b6",
-              borderRadius: 2,
+              borderRadius: THEME.radius.sm,
               fontSize: 10,
             }}
           >
-            <span style={{ color: "#9b59b6" }}>Next: </span>
-            <span style={{ color: "#bbb" }}>{nextMilestone.title}</span>
-            <span style={{ color: "#555" }}>
+            <span style={{ color: THEME.colors.purple }}>Next: </span>
+            <span style={{ color: THEME.colors.textMuted }}>{nextMilestone.title}</span>
+            <span style={{ color: THEME.colors.textDim }}>
               {" "}— {nextMilestone.description}
             </span>
           </div>
@@ -100,16 +100,16 @@ export function ObjectivePanel() {
     <div
       style={{
         padding: "12px 16px",
-        background: "#1a1a2e",
-        borderBottom: "1px solid #333",
-        fontFamily: "monospace",
+        background: THEME.colors.bgPanel,
+        borderBottom: `1px solid ${THEME.colors.borderDark}`,
+        fontFamily: THEME.fonts.body,
       }}
     >
       {/* Header */}
       <div
         style={{
           fontSize: 11,
-          color: "#666",
+          color: THEME.colors.textDim,
           textTransform: "uppercase",
           letterSpacing: 1,
           marginBottom: 8,
@@ -119,7 +119,7 @@ export function ObjectivePanel() {
         }}
       >
         <span>Getting Started</span>
-        <span style={{ fontSize: 9, color: "#444" }}>
+        <span style={{ fontSize: 9, color: THEME.colors.textDim }}>
           {tutorial.objectives.filter((o) => o.completed).length}/
           {tutorial.objectives.length}
         </span>
@@ -129,19 +129,18 @@ export function ObjectivePanel() {
       {currentObj && (
         <div
           style={{
+            ...cardStyle(THEME.colors.info),
             padding: "8px 12px",
-            background: "#1a2a3a",
-            borderLeft: "3px solid #3498db",
-            borderRadius: 3,
+            borderRadius: THEME.radius.sm,
             marginBottom: 10,
           }}
         >
           <div
-            style={{ fontSize: 12, fontWeight: "bold", color: "#ecf0f1" }}
+            style={{ fontSize: 12, fontWeight: "bold", color: THEME.colors.text }}
           >
             {currentObj.title}
           </div>
-          <div style={{ fontSize: 10, color: "#8899aa", marginTop: 3, lineHeight: 1.4 }}>
+          <div style={{ fontSize: 10, color: THEME.colors.textMuted, marginTop: 3, lineHeight: 1.4 }}>
             {currentObj.description}
           </div>
         </div>
@@ -151,13 +150,12 @@ export function ObjectivePanel() {
       {blockers.length > 0 && (
         <div
           style={{
+            ...cardStyle(THEME.colors.warning),
             padding: "6px 10px",
-            background: "#2a1a1a",
-            borderLeft: "3px solid #e67e22",
-            borderRadius: 3,
+            borderRadius: THEME.radius.sm,
             marginBottom: 10,
             fontSize: 10,
-            color: "#e67e22",
+            color: THEME.colors.warning,
             lineHeight: 1.4,
           }}
         >
@@ -169,13 +167,12 @@ export function ObjectivePanel() {
       {starterProspect && tutorial.networkReady && (
         <div
           style={{
+            ...cardStyle(THEME.colors.success),
             padding: "6px 10px",
-            background: "#1a2a1a",
-            borderLeft: "3px solid #2ecc71",
-            borderRadius: 3,
+            borderRadius: THEME.radius.sm,
             marginBottom: 10,
             fontSize: 10,
-            color: "#2ecc71",
+            color: THEME.colors.success,
             lineHeight: 1.4,
           }}
         >
@@ -195,10 +192,10 @@ export function ObjectivePanel() {
               gap: 8,
               fontSize: 10,
               color: obj.completed
-                ? "#2ecc71"
+                ? THEME.colors.success
                 : i === tutorial.currentObjectiveIndex
-                  ? "#ecf0f1"
-                  : "#444",
+                  ? THEME.colors.text
+                  : THEME.colors.textDim,
             }}
           >
             <span style={{ fontSize: 11, width: 14, textAlign: "center" }}>
@@ -225,23 +222,17 @@ export function ObjectivePanel() {
         style={{
           marginTop: 10,
           padding: "4px 10px",
-          background: tutorial.networkReady ? "#1a2a1a" : "#2a1a1a",
-          borderRadius: 3,
+          background: tutorial.networkReady ? THEME.colors.successBg : THEME.colors.dangerBg,
+          borderRadius: THEME.radius.sm,
           fontSize: 10,
-          color: tutorial.networkReady ? "#2ecc71" : "#e74c3c",
+          color: tutorial.networkReady ? THEME.colors.success : THEME.colors.danger,
           display: "flex",
           alignItems: "center",
           gap: 6,
         }}
       >
         <span
-          style={{
-            width: 6,
-            height: 6,
-            borderRadius: "50%",
-            background: tutorial.networkReady ? "#2ecc71" : "#e74c3c",
-            display: "inline-block",
-          }}
+          style={statusDot(tutorial.networkReady ? THEME.colors.success : THEME.colors.danger)}
         />
         Network: {tutorial.networkReady ? "READY" : "NOT READY"}
       </div>

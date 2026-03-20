@@ -21,19 +21,25 @@ export class PreloadScene extends Phaser.Scene {
   }
 
   preload() {
-    // ── File-based asset loading (uncomment when real art is ready) ──
-    //
+    // ── File-based asset loading ──
+
     // Backgrounds
-    // this.load.image("room-bg", "assets/backgrounds/room-datacenter.png");
-    //
+    this.load.image("room-bg", "assets/backgrounds/room-datacenter.png");
+
     // Rack
-    // this.load.image("rack-frame", "assets/racks/rack-frame-42u.png");
-    //
-    // Devices (individual images)
-    // this.load.image("device-server", "assets/devices/device-server-1u.png");
-    // this.load.image("device-switch", "assets/devices/device-switch-24p.png");
-    // this.load.image("device-router", "assets/devices/device-router-1u.png");
-    // this.load.image("device-firewall", "assets/devices/device-firewall-1u.png");
+    this.load.image("rack-frame", "assets/racks/rack-frame-42u.png");
+
+    // Devices
+    this.load.image("device-server", "assets/devices/device-server-1u.png");
+    this.load.image("device-switch", "assets/devices/device-switch-24p.png");
+    this.load.image("device-router", "assets/devices/device-router-1u.png");
+    this.load.image("device-firewall", "assets/devices/device-firewall-1u.png");
+
+    // UI
+    this.load.image("ui-panel-bg", "assets/ui/panel-bg.png");
+    this.load.image("ui-logo", "assets/ui/logo.png");
+
+    // ── Not yet available — uncomment when ready ──
     //
     // Devices (atlas — use this instead of individual images for production)
     // this.load.atlas("devices", "assets/devices/devices.png", "assets/devices/devices.json");

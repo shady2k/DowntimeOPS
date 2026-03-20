@@ -1,4 +1,5 @@
 import { useGameStore } from "../../store/gameStore";
+import { THEME, cardStyle, buttonStyle, headingStyle } from "../theme";
 
 const EQUIPMENT = [
   {
@@ -6,21 +7,21 @@ const EQUIPMENT = [
     name: "1U Server",
     cost: 2000,
     desc: "2x 1GbE, 300W",
-    color: "#2ecc71",
+    color: THEME.colors.server,
   },
   {
     model: "switch_24p",
     name: "24-Port Switch",
     cost: 1500,
     desc: "24x 1GbE, 150W",
-    color: "#3498db",
+    color: THEME.colors.switch,
   },
   {
     model: "router_1u",
     name: "Router / Gateway",
     cost: 3000,
     desc: "4x 1GbE, 200W",
-    color: "#e67e22",
+    color: THEME.colors.router,
   },
 ];
 
@@ -58,19 +59,16 @@ export function EquipmentShop() {
 
   return (
     <div style={{ padding: 12 }}>
-      <h3 style={{ margin: "0 0 8px", fontSize: 13, color: "#95a5a6" }}>
-        EQUIPMENT SHOP
+      <h3 style={headingStyle()}>
+        Equipment Shop
       </h3>
       {shopHint && (
         <div
           style={{
-            padding: "6px 10px",
+            ...cardStyle(THEME.colors.info),
             marginBottom: 8,
-            background: "#2c3e50",
-            borderLeft: "3px solid #3498db",
-            borderRadius: 3,
             fontSize: 11,
-            color: "#bdc3c7",
+            color: THEME.colors.textMuted,
             lineHeight: 1.4,
           }}
         >
@@ -81,13 +79,10 @@ export function EquipmentShop() {
       {placingModel && (
         <div
           style={{
-            padding: "6px 10px",
+            ...cardStyle(THEME.colors.success),
             marginBottom: 8,
-            background: "#1a3a2a",
-            borderLeft: "3px solid #2ecc71",
-            borderRadius: 3,
             fontSize: 11,
-            color: "#2ecc71",
+            color: THEME.colors.success,
             display: "flex",
             alignItems: "center",
             gap: 8,
@@ -99,15 +94,7 @@ export function EquipmentShop() {
           </span>
           <button
             onClick={() => cancelPlacing()}
-            style={{
-              padding: "2px 8px",
-              background: "#e74c3c",
-              color: "#fff",
-              border: "none",
-              borderRadius: 2,
-              cursor: "pointer",
-              fontSize: 9,
-            }}
+            style={buttonStyle("danger", true)}
           >
             Cancel
           </button>
@@ -123,16 +110,18 @@ export function EquipmentShop() {
               display: "flex",
               alignItems: "center",
               gap: 8,
-              padding: "6px 8px",
-              marginBottom: 4,
-              background: isPlacing ? "#1a3a2a" : "#1a1a2e",
-              borderRadius: 4,
+              padding: "8px 10px",
+              marginBottom: 6,
+              background: isPlacing ? THEME.colors.successBg : THEME.colors.bgCard,
+              borderRadius: THEME.radius.md,
               borderLeft: `3px solid ${eq.color}`,
+              boxShadow: THEME.shadows.card,
+              transition: "background 0.15s",
             }}
           >
             <div style={{ flex: 1 }}>
-              <div style={{ fontSize: 12, fontWeight: "bold" }}>{eq.name}</div>
-              <div style={{ fontSize: 10, color: "#95a5a6" }}>{eq.desc}</div>
+              <div style={{ fontSize: 12, fontWeight: 700, fontFamily: THEME.fonts.heading }}>{eq.name}</div>
+              <div style={{ fontSize: 10, color: THEME.colors.textMuted, fontFamily: THEME.fonts.mono }}>{eq.desc}</div>
             </div>
             <button
               onClick={() =>
@@ -140,18 +129,21 @@ export function EquipmentShop() {
               }
               disabled={state.money < eq.cost && !isPlacing}
               style={{
-                padding: "3px 10px",
+                padding: "4px 12px",
                 background: isPlacing
-                  ? "#e67e22"
+                  ? THEME.colors.warning
                   : state.money >= eq.cost
-                    ? "#2ecc71"
-                    : "#555",
-                color: "#fff",
+                    ? THEME.colors.success
+                    : THEME.colors.bgCard,
+                color: isPlacing || state.money >= eq.cost ? "#fff" : THEME.colors.textDim,
                 border: "none",
-                borderRadius: 3,
+                borderRadius: THEME.radius.sm,
                 cursor:
                   state.money >= eq.cost || isPlacing ? "pointer" : "default",
                 fontSize: 11,
+                fontWeight: 700,
+                fontFamily: THEME.fonts.mono,
+                boxShadow: state.money >= eq.cost ? THEME.shadows.button : "none",
               }}
             >
               {isPlacing ? "Placing..." : `$${eq.cost}`}

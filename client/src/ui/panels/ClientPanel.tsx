@@ -1,20 +1,21 @@
 import { useGameStore } from "../../store/gameStore";
 import { rpcClient } from "../../rpc/client";
+import { THEME, cardStyle, buttonStyle, headingStyle } from "../theme";
 
 const PROSPECT_EXPIRE_TICKS = 240; // match server BALANCE
 
 function clientTypeBadge(type: string): { label: string; color: string } {
   switch (type) {
     case "startup":
-      return { label: "Startup", color: "#3498db" };
+      return { label: "Startup", color: THEME.colors.startup };
     case "smb":
-      return { label: "SMB", color: "#2ecc71" };
+      return { label: "SMB", color: THEME.colors.smb };
     case "enterprise":
-      return { label: "Enterprise", color: "#9b59b6" };
+      return { label: "Enterprise", color: THEME.colors.enterprise };
     case "bank":
-      return { label: "Finance", color: "#e67e22" };
+      return { label: "Finance", color: THEME.colors.bank };
     default:
-      return { label: type, color: "#666" };
+      return { label: type, color: THEME.colors.textDim };
   }
 }
 
@@ -36,8 +37,8 @@ export function ClientPanel() {
   );
 
   return (
-    <div style={{ padding: 12, fontFamily: "monospace" }}>
-      <h3 style={{ margin: "0 0 8px", fontSize: 13, color: "#95a5a6" }}>
+    <div style={{ padding: 12, fontFamily: THEME.fonts.body }}>
+      <h3 style={headingStyle()}>
         CLIENTS
       </h3>
 
@@ -47,10 +48,10 @@ export function ClientPanel() {
           style={{
             padding: "4px 8px",
             marginBottom: 8,
-            background: "#1a2a1a",
-            borderRadius: 3,
+            background: THEME.colors.successBg,
+            borderRadius: THEME.radius.sm,
             fontSize: 10,
-            color: "#2ecc71",
+            color: THEME.colors.success,
           }}
         >
           {active.length} active — ${totalRevenue}/mo revenue
@@ -61,12 +62,9 @@ export function ClientPanel() {
       {prospects.length === 0 && active.length === 0 && (
         <div
           style={{
-            padding: "8px 10px",
-            background: "#1a1a28",
-            borderLeft: "3px solid #555",
-            borderRadius: 3,
+            ...cardStyle(THEME.colors.textDim),
             fontSize: 10,
-            color: "#666",
+            color: THEME.colors.textDim,
             lineHeight: 1.5,
           }}
         >
@@ -83,14 +81,15 @@ export function ClientPanel() {
             style={{
               margin: "0 0 4px",
               fontSize: 11,
-              color: "#f39c12",
+              color: THEME.colors.warning,
+              fontFamily: THEME.fonts.heading,
               display: "flex",
               alignItems: "center",
               gap: 6,
             }}
           >
             Prospects ({prospects.length})
-            <span style={{ fontSize: 9, color: "#666", fontWeight: "normal" }}>
+            <span style={{ fontSize: 9, color: THEME.colors.textDim, fontWeight: "normal" }}>
               — accept before they leave
             </span>
           </h4>
@@ -106,17 +105,14 @@ export function ClientPanel() {
             const expiryPct =
               ticksLeft !== null ? ticksLeft / PROSPECT_EXPIRE_TICKS : 1;
             const expiryColor =
-              expiryPct > 0.5 ? "#f39c12" : expiryPct > 0.2 ? "#e67e22" : "#e74c3c";
+              expiryPct > 0.5 ? THEME.colors.warning : expiryPct > 0.2 ? THEME.colors.warning : THEME.colors.danger;
 
             return (
               <div
                 key={client.id}
                 style={{
-                  padding: "8px 10px",
+                  ...cardStyle(THEME.colors.warning),
                   marginBottom: 4,
-                  background: "#1a1a2e",
-                  borderRadius: 4,
-                  borderLeft: "3px solid #f39c12",
                   fontSize: 10,
                 }}
               >
@@ -128,7 +124,7 @@ export function ClientPanel() {
                     marginBottom: 2,
                   }}
                 >
-                  <span style={{ fontWeight: "bold", fontSize: 11 }}>
+                  <span style={{ fontWeight: "bold", fontSize: 11, color: THEME.colors.text }}>
                     {client.name}
                   </span>
                   <span
@@ -136,8 +132,8 @@ export function ClientPanel() {
                       fontSize: 8,
                       padding: "1px 4px",
                       background: badge.color,
-                      color: "#fff",
-                      borderRadius: 2,
+                      color: THEME.colors.textInverse,
+                      borderRadius: THEME.radius.sm,
                     }}
                   >
                     {badge.label}
@@ -159,7 +155,7 @@ export function ClientPanel() {
                   <div
                     style={{
                       fontSize: 9,
-                      color: "#666",
+                      color: THEME.colors.textDim,
                       fontStyle: "italic",
                       marginBottom: 4,
                       lineHeight: 1.3,
@@ -173,7 +169,7 @@ export function ClientPanel() {
                   <div
                     style={{
                       height: 2,
-                      background: "#333",
+                      background: THEME.colors.border,
                       borderRadius: 1,
                       marginBottom: 4,
                       overflow: "hidden",
@@ -194,7 +190,7 @@ export function ClientPanel() {
                     display: "grid",
                     gridTemplateColumns: "1fr 1fr",
                     gap: "2px 12px",
-                    color: "#95a5a6",
+                    color: THEME.colors.textMuted,
                     fontSize: 10,
                     marginBottom: 6,
                   }}
@@ -202,7 +198,7 @@ export function ClientPanel() {
                   <span>Bandwidth: {client.contract.bandwidthMbps} Mbps</span>
                   <span>
                     Revenue:{" "}
-                    <strong style={{ color: "#2ecc71" }}>
+                    <strong style={{ color: THEME.colors.success }}>
                       ${client.contract.monthlyRevenue}/mo
                     </strong>
                   </span>
@@ -214,7 +210,7 @@ export function ClientPanel() {
                     Duration: {client.contract.durationMonths} months
                   </span>
                   {client.contract.isolationRequired && (
-                    <span style={{ color: "#e67e22" }}>Isolation required</span>
+                    <span style={{ color: THEME.colors.warning }}>Isolation required</span>
                   )}
                 </div>
                 <div style={{ display: "flex", gap: 4 }}>
@@ -224,16 +220,7 @@ export function ClientPanel() {
                         .call("acceptClient", { clientId: client.id })
                         .catch(() => {})
                     }
-                    style={{
-                      padding: "3px 12px",
-                      background: "#2ecc71",
-                      color: "#fff",
-                      border: "none",
-                      borderRadius: 3,
-                      cursor: "pointer",
-                      fontSize: 10,
-                      fontWeight: "bold",
-                    }}
+                    style={buttonStyle("primary")}
                   >
                     Accept Contract
                   </button>
@@ -244,13 +231,9 @@ export function ClientPanel() {
                         .catch(() => {})
                     }
                     style={{
-                      padding: "3px 12px",
-                      background: "transparent",
-                      color: "#e74c3c",
-                      border: "1px solid #e74c3c",
-                      borderRadius: 3,
-                      cursor: "pointer",
-                      fontSize: 10,
+                      ...buttonStyle("ghost"),
+                      color: THEME.colors.danger,
+                      borderColor: THEME.colors.danger,
                     }}
                   >
                     Decline
@@ -263,18 +246,15 @@ export function ClientPanel() {
       )}
 
       {/* Active contracts */}
-      <h4 style={{ margin: "12px 0 4px", fontSize: 11, color: "#2ecc71" }}>
+      <h4 style={{ margin: "12px 0 4px", fontSize: 11, color: THEME.colors.success, fontFamily: THEME.fonts.heading }}>
         Active Contracts ({active.length})
       </h4>
       {active.length === 0 && prospects.length > 0 && (
         <div
           style={{
-            padding: "6px 10px",
-            background: "#1a2a1a",
-            borderLeft: "3px solid #2ecc71",
-            borderRadius: 3,
+            ...cardStyle(THEME.colors.success),
             fontSize: 10,
-            color: "#2ecc71",
+            color: THEME.colors.success,
             lineHeight: 1.4,
           }}
         >
@@ -296,11 +276,9 @@ export function ClientPanel() {
             key={client.id}
             onClick={() => selectClient(isSelected ? null : client.id)}
             style={{
-              padding: "6px 10px",
+              ...cardStyle(isSelected ? THEME.colors.accent : client.status === "warning" ? THEME.colors.warning : THEME.colors.success),
               marginBottom: 4,
-              background: isSelected ? "#1a2a1a" : "#1a1a2e",
-              borderRadius: 4,
-              borderLeft: `3px solid ${isSelected ? "#f1c40f" : client.status === "warning" ? "#f39c12" : "#2ecc71"}`,
+              background: isSelected ? THEME.colors.successBg : THEME.colors.bgCard,
               fontSize: 10,
               cursor: "pointer",
             }}
@@ -313,7 +291,7 @@ export function ClientPanel() {
                 marginBottom: 2,
               }}
             >
-              <span style={{ fontWeight: "bold", fontSize: 11 }}>
+              <span style={{ fontWeight: "bold", fontSize: 11, color: THEME.colors.text }}>
                 {client.name}
               </span>
               <span
@@ -321,8 +299,8 @@ export function ClientPanel() {
                   fontSize: 8,
                   padding: "1px 4px",
                   background: badge.color,
-                  color: "#fff",
-                  borderRadius: 2,
+                  color: THEME.colors.textInverse,
+                  borderRadius: THEME.radius.sm,
                   opacity: 0.7,
                 }}
               >
@@ -330,28 +308,28 @@ export function ClientPanel() {
               </span>
               {isSelected && (
                 <span
-                  style={{ color: "#f1c40f", fontSize: 9, marginLeft: "auto" }}
+                  style={{ color: THEME.colors.accent, fontSize: 9, marginLeft: "auto" }}
                 >
                   SHOWING PATH
                 </span>
               )}
               {!isSelected && client.status === "warning" && (
                 <span
-                  style={{ color: "#f39c12", fontSize: 9, marginLeft: "auto" }}
+                  style={{ color: THEME.colors.warning, fontSize: 9, marginLeft: "auto" }}
                 >
                   AT RISK
                 </span>
               )}
             </div>
-            <div style={{ color: "#95a5a6" }}>
+            <div style={{ color: THEME.colors.textMuted }}>
               ${client.contract.monthlyRevenue}/mo |{" "}
               {client.contract.bandwidthMbps} Mbps | Satisfaction:{" "}
               {client.satisfaction}%
             </div>
-            <div style={{ color: "#555" }}>
+            <div style={{ color: THEME.colors.textDim }}>
               Connections: {activeConns}/{connCount} active
               {activeConns < connCount && connCount > 0 && (
-                <span style={{ color: "#e74c3c", marginLeft: 4 }}>
+                <span style={{ color: THEME.colors.danger, marginLeft: 4 }}>
                   — service disrupted
                 </span>
               )}

@@ -1,5 +1,6 @@
 import { useGameStore } from "../../store/gameStore";
 import { rpcClient } from "../../rpc/client";
+import { THEME } from "../theme";
 
 export function TopBar() {
   const state = useGameStore((s) => s.state);
@@ -7,7 +8,7 @@ export function TopBar() {
   if (!state) return null;
 
   const net = state.monthlyRevenue - state.monthlyExpenses;
-  const netColor = net > 0 ? "#2ecc71" : net < 0 ? "#e74c3c" : "#666";
+  const netColor = net > 0 ? THEME.colors.success : net < 0 ? THEME.colors.danger : THEME.colors.textDim;
   const activeIncidents = state.alerts.filter(
     (a) => !a.acknowledged && a.severity === "critical",
   ).length;
@@ -21,35 +22,39 @@ export function TopBar() {
       style={{
         display: "flex",
         alignItems: "center",
-        gap: 6,
-        padding: "6px 16px",
-        background: "#1a1a2e",
-        borderBottom: "1px solid #333",
+        gap: 8,
+        padding: "8px 16px",
+        background: THEME.colors.bgPanel,
+        borderBottom: `1px solid ${THEME.colors.borderDark}`,
         fontSize: 12,
-        fontFamily: "monospace",
+        fontFamily: THEME.fonts.body,
+        boxShadow: "0 2px 8px rgba(0,0,0,0.2)",
       }}
     >
       {/* Logo */}
-      <span style={{ fontWeight: "bold", color: "#3498db", marginRight: 8 }}>
-        DowntimeOPS
-      </span>
+      <img
+        src="assets/ui/logo.png"
+        alt="DowntimeOPS"
+        style={{ height: 22, marginRight: 8, imageRendering: "auto" }}
+        onError={(e) => { (e.target as HTMLImageElement).style.display = "none"; }}
+      />
 
       {/* Primary: Net cashflow */}
       <div
         style={{
-          padding: "2px 10px",
-          background: net > 0 ? "#1a2a1a" : net < 0 ? "#2a1a1a" : "#1a1a20",
-          borderRadius: 3,
-          border: `1px solid ${net > 0 ? "#2a4a2a" : net < 0 ? "#4a2a2a" : "#2a2a3a"}`,
+          padding: "3px 10px",
+          background: net > 0 ? THEME.colors.successBg : net < 0 ? THEME.colors.dangerBg : THEME.colors.bgCard,
+          borderRadius: THEME.radius.sm,
+          border: `1px solid ${net > 0 ? THEME.colors.successBorder : net < 0 ? THEME.colors.dangerBorder : THEME.colors.border}`,
         }}
       >
-        <span style={{ color: netColor, fontWeight: "bold" }}>
+        <span style={{ color: netColor, fontWeight: 700, fontFamily: THEME.fonts.mono, fontSize: 12 }}>
           {net >= 0 ? "+" : ""}${net.toFixed(0)}/mo
         </span>
       </div>
 
       {/* Balance */}
-      <span style={{ color: "#2ecc71", fontSize: 11 }}>
+      <span style={{ color: THEME.colors.success, fontSize: 12, fontFamily: THEME.fonts.mono, fontWeight: 600 }}>
         ${state.money.toFixed(0)}
       </span>
 
@@ -57,11 +62,12 @@ export function TopBar() {
       {net < 0 && state.money > 0 && (
         <span
           style={{
-            color: "#e67e22",
+            color: THEME.colors.warning,
             fontSize: 10,
-            padding: "1px 6px",
-            background: "#2a1a0a",
-            borderRadius: 2,
+            padding: "2px 8px",
+            background: THEME.colors.warningBg,
+            borderRadius: THEME.radius.sm,
+            fontWeight: 600,
           }}
         >
           Runway: {Math.floor(state.money / Math.abs(net))}mo
@@ -69,10 +75,10 @@ export function TopBar() {
       )}
 
       {/* Separator */}
-      <span style={{ color: "#333", margin: "0 2px" }}>|</span>
+      <span style={{ color: THEME.colors.borderDark, margin: "0 2px" }}>|</span>
 
       {/* Reputation */}
-      <span style={{ fontSize: 11, color: "#95a5a6" }}>
+      <span style={{ fontSize: 11, color: THEME.colors.textMuted }}>
         Rep: {state.reputation.toFixed(0)}
       </span>
 
@@ -80,12 +86,13 @@ export function TopBar() {
       {activeIncidents > 0 && (
         <span
           style={{
-            color: "#e74c3c",
+            color: THEME.colors.danger,
             fontSize: 10,
-            padding: "1px 6px",
-            background: highlightedAlertId ? "#3a1a1a" : "#2a1a1a",
-            borderRadius: 2,
-            fontWeight: "bold",
+            padding: "2px 8px",
+            background: highlightedAlertId ? THEME.colors.dangerBg : THEME.colors.dangerBg,
+            borderRadius: THEME.radius.sm,
+            fontWeight: 700,
+            border: `1px solid ${THEME.colors.dangerBorder}`,
             animation: "pulse 1.5s infinite",
           }}
         >
@@ -94,8 +101,8 @@ export function TopBar() {
       )}
 
       {/* Speed controls — right aligned */}
-      <div style={{ marginLeft: "auto", display: "flex", gap: 3 }}>
-        <span style={{ fontSize: 10, color: "#555", alignSelf: "center", marginRight: 4 }}>
+      <div style={{ marginLeft: "auto", display: "flex", gap: 4, alignItems: "center" }}>
+        <span style={{ fontSize: 10, color: THEME.colors.textDim, marginRight: 4, fontFamily: THEME.fonts.mono }}>
           Tick {state.tick}
         </span>
         {[0, 1, 2, 3].map((s) => (
@@ -103,13 +110,17 @@ export function TopBar() {
             key={s}
             onClick={() => setSpeed(s)}
             style={{
-              padding: "2px 7px",
-              background: state.speed === s ? "#3498db" : "#252540",
-              color: state.speed === s ? "#fff" : "#888",
-              border: `1px solid ${state.speed === s ? "#3498db" : "#333"}`,
-              borderRadius: 3,
+              padding: "3px 8px",
+              background: state.speed === s ? THEME.colors.accent : THEME.colors.bgCard,
+              color: state.speed === s ? THEME.colors.textInverse : THEME.colors.textMuted,
+              border: `1px solid ${state.speed === s ? THEME.colors.accent : THEME.colors.border}`,
+              borderRadius: THEME.radius.sm,
               cursor: "pointer",
               fontSize: 11,
+              fontWeight: state.speed === s ? 700 : 400,
+              fontFamily: THEME.fonts.body,
+              boxShadow: state.speed === s ? THEME.shadows.glow(THEME.colors.accent) : "none",
+              transition: "all 0.15s",
             }}
           >
             {s === 0 ? "||" : `${s}x`}

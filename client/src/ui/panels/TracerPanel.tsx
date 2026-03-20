@@ -2,6 +2,7 @@ import { useState } from "react";
 import { useGameStore } from "../../store/gameStore";
 import { rpcClient } from "../../rpc/client";
 import type { TracerPacket } from "@downtime-ops/shared";
+import { THEME, headingStyle, inputStyle, buttonStyle, cardStyle } from "../theme";
 
 export function TracerPanel() {
   const state = useGameStore((s) => s.state);
@@ -54,7 +55,7 @@ export function TracerPanel() {
 
   return (
     <div style={{ padding: 12 }}>
-      <h3 style={{ margin: "0 0 8px", fontSize: 13, color: "#95a5a6" }}>
+      <h3 style={headingStyle()}>
         PACKET TRACER
       </h3>
 
@@ -63,13 +64,8 @@ export function TracerPanel() {
           value={srcIp}
           onChange={(e) => setSrcIp(e.target.value)}
           style={{
+            ...inputStyle(),
             flex: 1,
-            background: "#1a1a2e",
-            color: "#ecf0f1",
-            border: "1px solid #333",
-            borderRadius: 3,
-            padding: 3,
-            fontSize: 10,
           }}
         >
           <option value="">Source IP</option>
@@ -87,13 +83,8 @@ export function TracerPanel() {
           onChange={(e) => setDstIp(e.target.value)}
           placeholder="Destination IP (e.g. 203.0.113.1)"
           style={{
+            ...inputStyle(),
             flex: 1,
-            background: "#1a1a2e",
-            color: "#ecf0f1",
-            border: "1px solid #333",
-            borderRadius: 3,
-            padding: 3,
-            fontSize: 10,
           }}
         />
       </div>
@@ -102,30 +93,22 @@ export function TracerPanel() {
         <button
           onClick={startTrace}
           disabled={!srcIp || !dstIp}
-          style={{
-            padding: "3px 10px",
-            background: srcIp && dstIp ? "#9b59b6" : "#555",
-            color: "#fff",
-            border: "none",
-            borderRadius: 3,
-            cursor: srcIp && dstIp ? "pointer" : "default",
-            fontSize: 10,
-          }}
+          style={
+            srcIp && dstIp
+              ? { ...buttonStyle("primary"), background: THEME.colors.purple, color: "#fff" }
+              : buttonStyle("muted")
+          }
         >
           Start Trace
         </button>
         <button
           onClick={stepTrace}
           disabled={!tracerId}
-          style={{
-            padding: "3px 10px",
-            background: tracerId ? "#3498db" : "#555",
-            color: "#fff",
-            border: "none",
-            borderRadius: 3,
-            cursor: tracerId ? "pointer" : "default",
-            fontSize: 10,
-          }}
+          style={
+            tracerId
+              ? { ...buttonStyle("primary"), background: THEME.colors.info, color: "#fff" }
+              : buttonStyle("muted")
+          }
         >
           Step
         </button>
@@ -135,15 +118,14 @@ export function TracerPanel() {
         <div style={{ fontSize: 10 }}>
           <div
             style={{
+              ...cardStyle(),
               marginBottom: 6,
-              padding: 4,
               background:
                 packet.status === "delivered"
-                  ? "#1a3a2e"
+                  ? THEME.colors.successBg
                   : packet.status === "dropped"
-                    ? "#3a1a1a"
-                    : "#1a1a2e",
-              borderRadius: 3,
+                    ? THEME.colors.dangerBg
+                    : THEME.colors.bgCard,
             }}
           >
             Status:{" "}
@@ -151,10 +133,10 @@ export function TracerPanel() {
               style={{
                 color:
                   packet.status === "delivered"
-                    ? "#2ecc71"
+                    ? THEME.colors.success
                     : packet.status === "dropped"
-                      ? "#e74c3c"
-                      : "#3498db",
+                      ? THEME.colors.danger
+                      : THEME.colors.info,
                 fontWeight: "bold",
               }}
             >
@@ -163,7 +145,7 @@ export function TracerPanel() {
             {" | "}TTL: {packet.ttl}
           </div>
 
-          <h4 style={{ margin: "0 0 4px", fontSize: 11, color: "#666" }}>
+          <h4 style={headingStyle("h4")}>
             Hops ({packet.hops.length})
           </h4>
 
@@ -171,27 +153,24 @@ export function TracerPanel() {
             <div
               key={i}
               style={{
-                padding: 4,
+                ...cardStyle(
+                  hop.decision.type === "drop" ? THEME.colors.danger : THEME.colors.success
+                ),
                 marginBottom: 2,
-                background: "#1a1a2e",
-                borderRadius: 3,
-                borderLeft: `3px solid ${
-                  hop.decision.type === "drop" ? "#e74c3c" : "#2ecc71"
-                }`,
               }}
             >
-              <div style={{ color: "#95a5a6" }}>
+              <div style={{ color: THEME.colors.textMuted }}>
                 Hop {i + 1}:{" "}
                 {state.devices[hop.deviceId]?.name || hop.deviceId}
               </div>
               <div>{hop.action}</div>
               {hop.decision.matchedRule && (
-                <div style={{ color: "#666" }}>
+                <div style={{ color: THEME.colors.textDim }}>
                   Rule: {hop.decision.matchedRule}
                 </div>
               )}
               {hop.decision.reason && (
-                <div style={{ color: "#e74c3c" }}>
+                <div style={{ color: THEME.colors.danger }}>
                   Reason: {hop.decision.reason}
                 </div>
               )}

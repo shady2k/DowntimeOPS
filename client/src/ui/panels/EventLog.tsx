@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { useGameStore } from "../../store/gameStore";
+import { THEME, headingStyle, buttonStyle } from "../theme";
 
 export function EventLog() {
   const alerts = useGameStore((s) => s.state?.alerts ?? []);
@@ -27,7 +28,7 @@ export function EventLog() {
     .slice(0, expanded ? 50 : 10);
 
   return (
-    <div style={{ padding: 12, fontFamily: "monospace" }}>
+    <div style={{ padding: 12, fontFamily: THEME.fonts.body }}>
       <div
         style={{
           display: "flex",
@@ -36,27 +37,19 @@ export function EventLog() {
           marginBottom: 8,
         }}
       >
-        <h3 style={{ margin: 0, fontSize: 13, color: "#95a5a6" }}>
+        <h3 style={headingStyle()}>
           OPS LOG
         </h3>
         <button
           onClick={() => setExpanded(!expanded)}
-          style={{
-            padding: "1px 6px",
-            background: "transparent",
-            color: "#555",
-            border: "1px solid #333",
-            borderRadius: 2,
-            cursor: "pointer",
-            fontSize: 9,
-          }}
+          style={buttonStyle("ghost", true)}
         >
           {expanded ? "Show less" : "Show more"}
         </button>
       </div>
 
       {feed.length === 0 && (
-        <p style={{ fontSize: 10, color: "#444" }}>No events yet.</p>
+        <p style={{ fontSize: 10, color: THEME.colors.textDim }}>No events yet.</p>
       )}
 
       <div style={{ display: "flex", flexDirection: "column", gap: 2 }}>
@@ -68,24 +61,25 @@ export function EventLog() {
               gap: 6,
               fontSize: 10,
               padding: "2px 4px",
-              borderRadius: 2,
+              borderRadius: THEME.radius.sm,
+              fontFamily: THEME.fonts.mono,
               background:
                 entry.type === "alert" && entry.severity === "critical"
-                  ? "#1a0a0a"
+                  ? THEME.colors.dangerBg
                   : "transparent",
             }}
           >
-            <span style={{ color: "#444", minWidth: 36, textAlign: "right" }}>
+            <span style={{ color: THEME.colors.textDim, minWidth: 36, textAlign: "right" }}>
               t{entry.tick}
             </span>
             <span
               style={{
                 color:
                   entry.severity === "critical"
-                    ? "#e74c3c"
+                    ? THEME.colors.danger
                     : entry.severity === "warning"
-                      ? "#f39c12"
-                      : "#555",
+                      ? THEME.colors.warning
+                      : THEME.colors.textDim,
               }}
             >
               {entry.message}

@@ -16,6 +16,7 @@ import { SaveLoadPanel } from "./ui/panels/SaveLoadPanel";
 import { ObjectivePanel } from "./ui/objectives/ObjectivePanel";
 import { TutorialOverlay } from "./ui/overlays/TutorialOverlay";
 import { CelebrationOverlay } from "./ui/overlays/CelebrationOverlay";
+import { THEME } from "./ui/theme";
 
 type SideTab =
   | "shop"
@@ -61,14 +62,14 @@ function App() {
           alignItems: "center",
           justifyContent: "center",
           height: "100vh",
-          background: "#0f0f1a",
-          color: "#ecf0f1",
-          fontFamily: "monospace",
+          background: THEME.colors.bgDarkest,
+          color: THEME.colors.text,
+          fontFamily: THEME.fonts.heading,
         }}
       >
         <div style={{ textAlign: "center" }}>
-          <h1>DowntimeOPS</h1>
-          <p>
+          <h1 style={{ color: THEME.colors.accent, fontWeight: 800, fontSize: 28, marginBottom: 12 }}>DowntimeOPS</h1>
+          <p style={{ color: THEME.colors.textMuted, fontSize: 14 }}>
             {connected ? "Loading game state..." : "Connecting to server..."}
           </p>
         </div>
@@ -112,8 +113,9 @@ function App() {
           <div
             style={{
               display: "flex",
-              borderBottom: "1px solid #333",
-              fontSize: 10,
+              borderBottom: `1px solid ${THEME.colors.borderDark}`,
+              fontSize: 11,
+              background: THEME.colors.bgPanel,
             }}
           >
             {tabs.map(([tab, label]) => (
@@ -122,17 +124,19 @@ function App() {
                 onClick={() => setSideTab(tab)}
                 style={{
                   flex: 1,
-                  padding: "6px 0",
-                  background: sideTab === tab ? "#2c3e50" : "transparent",
-                  color: sideTab === tab ? "#ecf0f1" : "#666",
+                  padding: "8px 0",
+                  background: sideTab === tab ? THEME.colors.bgCard : "transparent",
+                  color: sideTab === tab ? THEME.colors.text : THEME.colors.textDim,
                   border: "none",
                   borderBottom:
                     sideTab === tab
-                      ? "2px solid #3498db"
+                      ? `2px solid ${THEME.colors.accent}`
                       : "2px solid transparent",
                   cursor: "pointer",
-                  fontSize: 10,
-                  fontFamily: "monospace",
+                  fontSize: 11,
+                  fontFamily: THEME.fonts.body,
+                  fontWeight: sideTab === tab ? 700 : 400,
+                  transition: "all 0.15s",
                 }}
               >
                 {label}

@@ -1,4 +1,5 @@
 import { useGameStore } from "../../store/gameStore";
+import { THEME } from "../theme";
 
 /**
  * Tutorial spotlight overlay. Shows contextual callouts based on tutorial
@@ -98,16 +99,17 @@ export function TutorialOverlay() {
       style={{
         ...positionStyles[callout.position],
         padding: "8px 14px",
-        background: "rgba(52, 152, 219, 0.9)",
+        background: "rgba(232, 168, 64, 0.92)",
         color: "#fff",
-        borderRadius: 6,
+        borderRadius: THEME.radius.lg,
         fontSize: 11,
-        fontFamily: "monospace",
+        fontFamily: THEME.fonts.body,
         maxWidth: 300,
         textAlign: "center",
         pointerEvents: "none",
         zIndex: 100,
-        boxShadow: "0 2px 12px rgba(0,0,0,0.5)",
+        boxShadow: "0 4px 20px rgba(0,0,0,0.5)",
+        border: "1px solid rgba(255,255,255,0.15)",
       }}
     >
       {callout.message}

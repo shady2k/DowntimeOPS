@@ -1,4 +1,5 @@
 import { useGameStore } from "../../store/gameStore";
+import { THEME, cardStyle, headingStyle } from "../theme";
 
 export function ConnectionInspector() {
   const state = useGameStore((s) => s.state);
@@ -10,44 +11,42 @@ export function ConnectionInspector() {
   const terminated = connections.filter((c) => c.status === "terminated");
 
   return (
-    <div style={{ padding: 12 }}>
-      <h3 style={{ margin: "0 0 8px", fontSize: 13, color: "#95a5a6" }}>
+    <div style={{ padding: 12, fontFamily: THEME.fonts.body }}>
+      <h3 style={headingStyle()}>
         CONNECTIONS
       </h3>
 
-      <div style={{ fontSize: 10, marginBottom: 8, color: "#95a5a6" }}>
-        <span style={{ color: "#2ecc71" }}>{active.length} active</span>
+      <div style={{ fontSize: 10, marginBottom: 8, color: THEME.colors.textMuted }}>
+        <span style={{ color: THEME.colors.success }}>{active.length} active</span>
         {" | "}
-        <span style={{ color: "#f39c12" }}>{degraded.length} degraded</span>
+        <span style={{ color: THEME.colors.warning }}>{degraded.length} degraded</span>
         {" | "}
-        <span style={{ color: "#e74c3c" }}>{terminated.length} terminated</span>
+        <span style={{ color: THEME.colors.danger }}>{terminated.length} terminated</span>
       </div>
 
       {connections.slice(0, 30).map((conn) => {
         const client = state.clients[conn.clientId];
         const statusColor =
           conn.status === "active"
-            ? "#2ecc71"
+            ? THEME.colors.success
             : conn.status === "degraded"
-              ? "#f39c12"
-              : "#e74c3c";
+              ? THEME.colors.warning
+              : THEME.colors.danger;
 
         return (
           <div
             key={conn.id}
             style={{
+              ...cardStyle(statusColor),
               padding: 4,
               marginBottom: 2,
-              background: "#1a1a2e",
-              borderRadius: 3,
-              borderLeft: `3px solid ${statusColor}`,
               fontSize: 10,
             }}
           >
-            <div>
+            <div style={{ color: THEME.colors.text, fontFamily: THEME.fonts.mono }}>
               {conn.srcIp}:{conn.srcPort} → {conn.dstIp}:{conn.dstPort}
             </div>
-            <div style={{ color: "#666" }}>
+            <div style={{ color: THEME.colors.textDim }}>
               {conn.bandwidthMbps.toFixed(1)} Mbps | {conn.path.length} hops |{" "}
               {client?.name || "Unknown"} |{" "}
               <span style={{ color: statusColor }}>{conn.status}</span>
@@ -57,7 +56,7 @@ export function ConnectionInspector() {
       })}
 
       {connections.length > 30 && (
-        <p style={{ fontSize: 10, color: "#555" }}>
+        <p style={{ fontSize: 10, color: THEME.colors.textDim }}>
           ... and {connections.length - 30} more
         </p>
       )}

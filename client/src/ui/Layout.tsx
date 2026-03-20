@@ -1,4 +1,5 @@
 import type { ReactNode } from "react";
+import { THEME } from "./theme";
 
 interface LayoutProps {
   topBar: ReactNode;
@@ -14,9 +15,9 @@ export function Layout({ topBar, canvas, sidePanel, bottomBar }: LayoutProps) {
         display: "flex",
         flexDirection: "column",
         height: "100vh",
-        background: "#0f0f1a",
-        color: "#ecf0f1",
-        fontFamily: "monospace",
+        background: THEME.colors.bgDarkest,
+        color: THEME.colors.text,
+        fontFamily: THEME.fonts.body,
       }}
     >
       <div style={{ flexShrink: 0 }}>{topBar}</div>
@@ -26,8 +27,10 @@ export function Layout({ topBar, canvas, sidePanel, bottomBar }: LayoutProps) {
           style={{
             width: 350,
             flexShrink: 0,
-            borderLeft: "1px solid #333",
+            borderLeft: `1px solid ${THEME.colors.borderDark}`,
+            background: THEME.colors.bgDark,
             overflow: "auto",
+            boxShadow: "-4px 0 16px rgba(0,0,0,0.3)",
           }}
         >
           {sidePanel}

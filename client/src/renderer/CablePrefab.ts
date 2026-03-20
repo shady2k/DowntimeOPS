@@ -75,7 +75,7 @@ export function getCableStyle(
 /** Compute pulse color based on link utilization */
 export function getPulseColor(utilization: number): number {
   if (utilization > 0.9) return PALETTE.cableCongested;
-  if (utilization > 0.5) return 0x66bb88;
+  if (utilization > 0.5) return 0x80b870;
   return PALETTE.portUp;
 }
 

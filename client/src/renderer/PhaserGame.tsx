@@ -13,7 +13,7 @@ export function PhaserGame() {
     gameRef.current = new Phaser.Game({
       type: Phaser.AUTO,
       parent: containerRef.current,
-      backgroundColor: "#0d0d1a",
+      backgroundColor: "#1e1814",
       scene: [PreloadScene, RackScene],
       scale: {
         mode: Phaser.Scale.RESIZE,

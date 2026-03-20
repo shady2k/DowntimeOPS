@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { useGameStore } from "../../store/gameStore";
+import { THEME } from "../theme";
 
 /**
  * Shows a celebration overlay when the player earns first revenue.
@@ -43,31 +44,31 @@ export function CelebrationOverlay() {
       <div
         style={{
           padding: "24px 40px",
-          background: "rgba(26, 42, 26, 0.95)",
-          border: "2px solid #2ecc71",
-          borderRadius: 12,
+          background: THEME.colors.overlay,
+          border: `2px solid ${THEME.colors.accent}`,
+          borderRadius: THEME.radius.xl,
           textAlign: "center",
-          fontFamily: "monospace",
-          boxShadow: "0 0 40px rgba(46, 204, 113, 0.3)",
+          fontFamily: THEME.fonts.heading,
+          boxShadow: THEME.shadows.glow(THEME.colors.accent),
         }}
       >
         <div
           style={{
             fontSize: 22,
             fontWeight: "bold",
-            color: "#2ecc71",
+            color: THEME.colors.accent,
             marginBottom: 8,
           }}
         >
           FIRST REVENUE
         </div>
-        <div style={{ fontSize: 14, color: "#bdc3c7", marginBottom: 4 }}>
+        <div style={{ fontSize: 14, color: THEME.colors.textMuted, marginBottom: 4 }}>
           Your datacenter is making money!
         </div>
-        <div style={{ fontSize: 18, color: "#2ecc71", fontWeight: "bold" }}>
+        <div style={{ fontSize: 18, color: THEME.colors.success, fontWeight: "bold" }}>
           +${revenue.toFixed(0)}/mo
         </div>
-        <div style={{ fontSize: 10, color: "#666", marginTop: 8 }}>
+        <div style={{ fontSize: 10, color: THEME.colors.textDim, marginTop: 8 }}>
           Keep building to attract bigger clients
         </div>
       </div>

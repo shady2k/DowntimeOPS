@@ -2,7 +2,7 @@ import Phaser from "phaser";
 import type { GameState, Device, Port, Link, CableType } from "@downtime-ops/shared";
 import { useGameStore } from "../store/gameStore";
 import { rpcClient } from "../rpc/client";
-import { RACK, PORT, PALETTE } from "./TextureGenerator";
+import { RACK, PORT, PALETTE, TEXT_COLORS } from "./TextureGenerator";
 import { emitAudioEvent } from "./AudioEvents";
 import { getCableStyle, getCableExitX, drawCablePath, interpolateCablePath, getPulseColor } from "./CablePrefab";
 import { PerfMonitor } from "./PerfMonitor";
@@ -230,9 +230,9 @@ export class RackScene extends Phaser.Scene {
     const title = this.add
       .text(RACK_X + RACK.WIDTH / 2, RACK_Y + 10, "RACK A", {
         fontSize: "11px",
-        color: "#aaaacc",
+        color: TEXT_COLORS.heading,
         fontStyle: "bold",
-        fontFamily: "monospace",
+        fontFamily: "'Nunito', sans-serif",
       })
       .setOrigin(0.5, 0.5);
     title.setDepth(DEPTH.RACK_FRAME);
@@ -248,8 +248,8 @@ export class RackScene extends Phaser.Scene {
         const label = this.add
           .text(RACK_X - 8, y, `${u}`, {
             fontSize: "9px",
-            color: "#555570",
-            fontFamily: "monospace",
+            color: TEXT_COLORS.dim,
+            fontFamily: "'JetBrains Mono', monospace",
           })
           .setOrigin(1, 0.5);
         label.setDepth(DEPTH.RACK_FRAME);
@@ -805,8 +805,9 @@ export class RackScene extends Phaser.Scene {
     const label = this.add
       .text(10, h / 2, device.name, {
         fontSize: "9px",
-        color: "#ddddee",
-        fontFamily: "monospace",
+        color: TEXT_COLORS.primary,
+        fontFamily: "'Nunito', sans-serif",
+        fontStyle: "bold",
       })
       .setOrigin(0, 0.5);
     container.add(label);
@@ -924,10 +925,10 @@ export class RackScene extends Phaser.Scene {
     const container = this.add.container(x, y).setDepth(DEPTH.TOOLTIPS);
 
     const bg = this.add.graphics();
-    bg.fillStyle(0x1a1a2e, 0.95);
-    bg.fillRoundedRect(0, 0, textWidth + padding * 2, bgHeight, 4);
-    bg.lineStyle(1, 0x444460, 0.8);
-    bg.strokeRoundedRect(0, 0, textWidth + padding * 2, bgHeight, 4);
+    bg.fillStyle(0x302820, 0.95);
+    bg.fillRoundedRect(0, 0, textWidth + padding * 2, bgHeight, 6);
+    bg.lineStyle(1, 0x5a4e40, 0.8);
+    bg.strokeRoundedRect(0, 0, textWidth + padding * 2, bgHeight, 6);
     container.add(bg);
 
     for (let i = 0; i < lines.length; i++) {
@@ -938,8 +939,8 @@ export class RackScene extends Phaser.Scene {
         lines[i],
         {
           fontSize: isTitle ? "10px" : "9px",
-          color: isTitle ? "#ecf0f1" : "#95a5a6",
-          fontFamily: "monospace",
+          color: isTitle ? TEXT_COLORS.primary : TEXT_COLORS.muted,
+          fontFamily: isTitle ? "'Nunito', sans-serif" : "'JetBrains Mono', monospace",
           fontStyle: isTitle ? "bold" : "normal",
         },
       );
@@ -954,8 +955,8 @@ export class RackScene extends Phaser.Scene {
         "Click port to cable",
         {
           fontSize: "8px",
-          color: "#666680",
-          fontFamily: "monospace",
+          color: TEXT_COLORS.dim,
+          fontFamily: "'Nunito', sans-serif",
           fontStyle: "italic",
         },
       );
@@ -1069,8 +1070,8 @@ export class RackScene extends Phaser.Scene {
           `+${device.ports.length - 24}`,
           {
             fontSize: "8px",
-            color: "#666680",
-            fontFamily: "monospace",
+            color: TEXT_COLORS.dim,
+            fontFamily: "'JetBrains Mono', monospace",
           },
         )
         .setOrigin(0, 0.5);

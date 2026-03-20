@@ -1,4 +1,5 @@
 import { useGameStore } from "../../store/gameStore";
+import { THEME } from "../theme";
 
 /** Map system alert types to player-facing language */
 function friendlyMessage(type: string, message: string): string {
@@ -49,11 +50,11 @@ export function AlertBar() {
   return (
     <div
       style={{
-        padding: "4px 16px",
-        background: "#1a1a2e",
-        borderTop: "1px solid #333",
+        padding: "5px 16px",
+        background: THEME.colors.bgPanel,
+        borderTop: `1px solid ${THEME.colors.borderDark}`,
         fontSize: 11,
-        fontFamily: "monospace",
+        fontFamily: THEME.fonts.body,
         display: "flex",
         gap: 16,
         overflow: "hidden",
@@ -63,10 +64,10 @@ export function AlertBar() {
         const isActive = highlightedAlertId === alert.id;
         const color =
           alert.severity === "critical"
-            ? "#e74c3c"
+            ? THEME.colors.danger
             : alert.severity === "warning"
-              ? "#f39c12"
-              : "#95a5a6";
+              ? THEME.colors.warning
+              : THEME.colors.textMuted;
 
         return (
           <span
@@ -77,9 +78,10 @@ export function AlertBar() {
               whiteSpace: "nowrap",
               cursor: alert.deviceId ? "pointer" : "default",
               opacity: isActive ? 1 : 0.8,
-              padding: "1px 4px",
-              background: isActive ? "#2a1a1a" : "transparent",
-              borderRadius: 2,
+              padding: "2px 6px",
+              background: isActive ? THEME.colors.dangerBg : "transparent",
+              borderRadius: THEME.radius.sm,
+              fontWeight: isActive ? 600 : 400,
             }}
           >
             [{severityLabel(alert.severity)}]{" "}
