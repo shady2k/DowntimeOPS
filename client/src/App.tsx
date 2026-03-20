@@ -19,16 +19,26 @@ function App() {
   const connected = useGameStore((s) => s.connected);
   const state = useGameStore((s) => s.state);
   const selectedDeviceId = useGameStore((s) => s.selectedDeviceId);
+  const cablingFrom = useGameStore((s) => s.cablingFrom);
+  const placingModel = useGameStore((s) => s.placingModel);
   const [sideTab, setSideTab] = useState<SideTab>("shop");
 
   useEffect(() => {
     setupReconciler();
   }, []);
 
-  // Auto-switch to device panel when a device is selected
+  // Auto-switch tabs based on context
   useEffect(() => {
     if (selectedDeviceId) setSideTab("device");
   }, [selectedDeviceId]);
+
+  useEffect(() => {
+    if (cablingFrom) setSideTab("cable");
+  }, [cablingFrom]);
+
+  useEffect(() => {
+    if (placingModel) setSideTab("shop");
+  }, [placingModel]);
 
   if (!connected || !state) {
     return (

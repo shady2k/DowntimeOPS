@@ -2,6 +2,8 @@ import { useGameStore } from "../../store/gameStore";
 
 export function AlertBar() {
   const alerts = useGameStore((s) => s.state?.alerts ?? []);
+  const highlightedAlertId = useGameStore((s) => s.highlightedAlertId);
+  const highlightAlert = useGameStore((s) => s.highlightAlert);
 
   const recent = alerts
     .filter((a) => !a.acknowledged)
@@ -25,6 +27,11 @@ export function AlertBar() {
       {recent.map((alert) => (
         <span
           key={alert.id}
+          onClick={() =>
+            highlightAlert(
+              highlightedAlertId === alert.id ? null : alert.id,
+            )
+          }
           style={{
             color:
               alert.severity === "critical"
@@ -33,6 +40,10 @@ export function AlertBar() {
                   ? "#f39c12"
                   : "#95a5a6",
             whiteSpace: "nowrap",
+            cursor: alert.deviceId ? "pointer" : "default",
+            textDecoration:
+              highlightedAlertId === alert.id ? "underline" : "none",
+            opacity: highlightedAlertId === alert.id ? 1 : 0.8,
           }}
         >
           [{alert.severity.toUpperCase()}] {alert.message}

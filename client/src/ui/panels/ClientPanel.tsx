@@ -3,6 +3,8 @@ import { rpcClient } from "../../rpc/client";
 
 export function ClientPanel() {
   const state = useGameStore((s) => s.state);
+  const selectedClientId = useGameStore((s) => s.selectedClientId);
+  const selectClient = useGameStore((s) => s.selectClient);
   if (!state) return null;
 
   const clients = Object.values(state.clients);
@@ -110,21 +112,29 @@ export function ClientPanel() {
           (c) => c.clientId === client.id && c.status === "active",
         ).length;
 
+        const isSelected = selectedClientId === client.id;
         return (
           <div
             key={client.id}
+            onClick={() => selectClient(isSelected ? null : client.id)}
             style={{
               padding: 6,
               marginBottom: 4,
-              background: "#1a1a2e",
+              background: isSelected ? "#1a2a1a" : "#1a1a2e",
               borderRadius: 4,
-              borderLeft: `3px solid ${client.status === "warning" ? "#f39c12" : "#2ecc71"}`,
+              borderLeft: `3px solid ${isSelected ? "#f1c40f" : client.status === "warning" ? "#f39c12" : "#2ecc71"}`,
               fontSize: 10,
+              cursor: "pointer",
             }}
           >
             <div style={{ fontWeight: "bold", fontSize: 11 }}>
               {client.name}
-              {client.status === "warning" && (
+              {isSelected && (
+                <span style={{ color: "#f1c40f", marginLeft: 6, fontSize: 9 }}>
+                  SHOWING PATH
+                </span>
+              )}
+              {!isSelected && client.status === "warning" && (
                 <span style={{ color: "#f39c12", marginLeft: 6 }}>
                   WARNING
                 </span>

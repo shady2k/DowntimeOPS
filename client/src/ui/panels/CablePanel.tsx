@@ -1,52 +1,12 @@
-import { useState } from "react";
 import { useGameStore } from "../../store/gameStore";
 import { rpcClient } from "../../rpc/client";
-import type { CableType } from "@downtime-ops/shared";
 
 export function CablePanel() {
   const state = useGameStore((s) => s.state);
-  const [cableStart, setCableStart] = useState<{
-    deviceId: string;
-    portIndex: number;
-  } | null>(null);
+  const cablingFrom = useGameStore((s) => s.cablingFrom);
+  const cancelCabling = useGameStore((s) => s.cancelCabling);
 
   if (!state) return null;
-
-  const devices = Object.values(state.devices);
-  const availablePorts = devices.flatMap((d) =>
-    d.ports
-      .filter((p) => !p.linkId && p.status === "up")
-      .map((p) => ({ device: d, port: p })),
-  );
-
-  const connect = (deviceId: string, portIndex: number) => {
-    if (!cableStart) {
-      setCableStart({ deviceId, portIndex });
-      return;
-    }
-
-    if (cableStart.deviceId === deviceId) {
-      setCableStart(null);
-      return;
-    }
-
-    const params = {
-      portA: `${cableStart.deviceId}-p${cableStart.portIndex}`,
-      portB: `${deviceId}-p${portIndex}`,
-      cableType: "cat6" as CableType,
-      deviceIdA: cableStart.deviceId,
-      portIndexA: cableStart.portIndex,
-      deviceIdB: deviceId,
-      portIndexB: portIndex,
-    };
-    rpcClient.call("connectPorts", params as never).catch(() => {});
-
-    setCableStart(null);
-  };
-
-  const disconnect = (linkId: string) => {
-    rpcClient.call("disconnectPorts", { linkId }).catch(() => {});
-  };
 
   return (
     <div style={{ padding: 12 }}>
@@ -54,23 +14,32 @@ export function CablePanel() {
         CABLING
       </h3>
 
-      {cableStart && (
+      {cablingFrom ? (
         <div
           style={{
             padding: 6,
             marginBottom: 8,
             background: "#2c3e50",
+            borderLeft: "3px solid #f1c40f",
             borderRadius: 4,
             fontSize: 11,
           }}
         >
-          Select target port for:{" "}
-          {state.devices[cableStart.deviceId]?.name} p{cableStart.portIndex}
+          <div>
+            Cabling from:{" "}
+            <strong>
+              {state.devices[cablingFrom.deviceId]?.name} p
+              {cablingFrom.portIndex}
+            </strong>
+          </div>
+          <div style={{ color: "#95a5a6", fontSize: 10, marginTop: 2 }}>
+            Click a port on another device to connect, or press Esc to cancel.
+          </div>
           <button
-            onClick={() => setCableStart(null)}
+            onClick={() => cancelCabling()}
             style={{
-              marginLeft: 8,
-              padding: "1px 6px",
+              marginTop: 4,
+              padding: "2px 8px",
               background: "#e74c3c",
               color: "#fff",
               border: "none",
@@ -82,34 +51,12 @@ export function CablePanel() {
             Cancel
           </button>
         </div>
+      ) : (
+        <p style={{ fontSize: 10, color: "#555", lineHeight: 1.5 }}>
+          Click any available port in the rack to start cabling. Then click a
+          port on another device to connect them.
+        </p>
       )}
-
-      <h4 style={{ margin: "0 0 4px", fontSize: 11, color: "#666" }}>
-        Available Ports
-      </h4>
-      {availablePorts.length === 0 && (
-        <p style={{ fontSize: 10, color: "#555" }}>No available ports</p>
-      )}
-      {availablePorts.slice(0, 20).map(({ device, port }) => (
-        <div
-          key={port.id}
-          onClick={() => connect(device.id, port.index)}
-          style={{
-            padding: "3px 6px",
-            marginBottom: 2,
-            background:
-              cableStart?.deviceId === device.id &&
-              cableStart?.portIndex === port.index
-                ? "#2c3e50"
-                : "#1a1a2e",
-            borderRadius: 3,
-            cursor: "pointer",
-            fontSize: 10,
-          }}
-        >
-          {device.name} → p{port.index}
-        </div>
-      ))}
 
       <h4 style={{ margin: "12px 0 4px", fontSize: 11, color: "#666" }}>
         Active Cables ({Object.keys(state.links).length})
@@ -139,7 +86,11 @@ export function CablePanel() {
               {link.currentLoadMbps.toFixed(0)}/{link.maxBandwidthMbps}Mbps
             </span>
             <button
-              onClick={() => disconnect(link.id)}
+              onClick={() =>
+                rpcClient
+                  .call("disconnectPorts", { linkId: link.id })
+                  .catch(() => {})
+              }
               style={{
                 padding: "1px 4px",
                 background: "#e74c3c",

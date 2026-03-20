@@ -1,6 +1,11 @@
 import { create } from "zustand";
 import type { GameState } from "@downtime-ops/shared";
 
+export interface CablingSource {
+  deviceId: string;
+  portIndex: number;
+}
+
 export interface GameStore {
   // Server-synced state
   state: GameState | null;
@@ -11,6 +16,12 @@ export interface GameStore {
   selectedPortId: string | null;
   activeView: "rack" | "room" | "trace" | "map";
 
+  // Rack interaction state
+  cablingFrom: CablingSource | null;
+  placingModel: string | null;
+  selectedClientId: string | null;
+  highlightedAlertId: string | null;
+
   // State sync actions
   applyDiff: (diff: Record<string, unknown>) => void;
   applySnapshot: (snapshot: GameState) => void;
@@ -20,6 +31,14 @@ export interface GameStore {
   selectDevice: (deviceId: string | null) => void;
   selectPort: (portId: string | null) => void;
   setView: (view: GameStore["activeView"]) => void;
+
+  // Rack interaction actions
+  startCabling: (source: CablingSource) => void;
+  cancelCabling: () => void;
+  startPlacing: (model: string) => void;
+  cancelPlacing: () => void;
+  selectClient: (clientId: string | null) => void;
+  highlightAlert: (alertId: string | null) => void;
 }
 
 export const useGameStore = create<GameStore>((set) => ({
@@ -31,6 +50,12 @@ export const useGameStore = create<GameStore>((set) => ({
   selectedDeviceId: null,
   selectedPortId: null,
   activeView: "rack",
+
+  // Rack interaction state
+  cablingFrom: null,
+  placingModel: null,
+  selectedClientId: null,
+  highlightedAlertId: null,
 
   // State sync actions
   applyDiff: (diff) =>
@@ -50,4 +75,19 @@ export const useGameStore = create<GameStore>((set) => ({
   selectPort: (portId) => set({ selectedPortId: portId }),
 
   setView: (view) => set({ activeView: view }),
+
+  // Rack interaction actions
+  startCabling: (source) =>
+    set({ cablingFrom: source, placingModel: null }),
+
+  cancelCabling: () => set({ cablingFrom: null }),
+
+  startPlacing: (model) =>
+    set({ placingModel: model, cablingFrom: null }),
+
+  cancelPlacing: () => set({ placingModel: null }),
+
+  selectClient: (clientId) => set({ selectedClientId: clientId }),
+
+  highlightAlert: (alertId) => set({ highlightedAlertId: alertId }),
 }));

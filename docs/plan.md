@@ -153,16 +153,16 @@ Replace placeholder debug graphics with a sprite-based layered rack scene.
 ### Sprint 2.3 — Tactile Rack Interactions
 Move primary gameplay into the rack scene so the player learns by manipulating hardware directly.
 
-- [ ] Implement click-to-cable directly in the rack scene: select source port, highlight valid targets, click destination to connect
-- [ ] Add cable preview rendering while hovering a target port
-- [ ] Add disconnect interaction from the rack scene via cable or port context action
-- [ ] Implement drag-to-place equipment from the shop into explicit rack U slots
-- [ ] Add placement snap, occupancy validation, and visual rejection feedback for blocked slots
-- [ ] Add device hover tooltips with critical data only: type, status, power, connected ports
-- [ ] Add client-to-path highlighting: selecting a client glows its active route through the rack
-- [ ] Add incident targeting: selecting an alert highlights the failing device, port, or link in the rack
-- [ ] Reduce dependence on side tabs by showing context-sensitive actions based on current selection
-- [ ] Keep panel workflows as secondary inspectors, not the primary place to play
+- [x] Implement click-to-cable directly in the rack scene: select source port, highlight valid targets, click destination to connect
+- [x] Add cable preview rendering while hovering a target port
+- [x] Add disconnect interaction from the rack scene via cable or port context action
+- [x] Implement drag-to-place equipment from the shop into explicit rack U slots
+- [x] Add placement snap, occupancy validation, and visual rejection feedback for blocked slots
+- [x] Add device hover tooltips with critical data only: type, status, power, connected ports
+- [x] Add client-to-path highlighting: selecting a client glows its active route through the rack
+- [x] Add incident targeting: selecting an alert highlights the failing device, port, or link in the rack
+- [x] Reduce dependence on side tabs by showing context-sensitive actions based on current selection
+- [x] Keep panel workflows as secondary inspectors, not the primary place to play
 
 ### Sprint 2.4 — Traffic, Failures, and Visual Feedback
 Make the network state visible and legible without opening debug panels.
