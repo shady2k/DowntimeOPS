@@ -37,6 +37,12 @@ export class PreloadScene extends Phaser.Scene {
     this.load.image("device-router", "assets/devices/device-router-1u.png");
     this.load.image("device-firewall", "assets/devices/device-firewall-1u.png");
 
+    // Player
+    this.load.spritesheet("player-walk", "assets/player/player-walk.png", {
+      frameWidth: 384,
+      frameHeight: 1024,
+    });
+
     // UI
     this.load.image("ui-panel-bg", "assets/ui/panel-bg.png");
     this.load.image("ui-logo", "assets/ui/logo.png");

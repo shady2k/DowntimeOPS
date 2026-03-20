@@ -257,55 +257,43 @@ export class WorldScene extends Phaser.Scene {
   // --- Player ---
 
   private createPlayer() {
-    // Generate player sprite (placeholder until real art)
-    if (!this.textures.exists("player")) {
-      const g = this.add.graphics();
-      const w = 48;
-      const h = 80;
-      // Shadow
-      g.fillStyle(0x000000, 0.3);
-      g.fillEllipse(w / 2, h - 4, 32, 8);
-      // Boots
-      g.fillStyle(0x3a2a1e);
-      g.fillRoundedRect(8, h - 14, 12, 14, 2);
-      g.fillRoundedRect(w - 20, h - 14, 12, 14, 2);
-      // Pants
-      g.fillStyle(0x2a3a4a);
-      g.fillRect(10, h - 34, 12, 22);
-      g.fillRect(w - 22, h - 34, 12, 22);
-      // Torso — work jacket
-      g.fillStyle(0x4a6a3a);
-      g.fillRoundedRect(6, h - 56, w - 12, 28, 4);
-      // Jacket detail
-      g.fillStyle(0x3a5a2a);
-      g.fillRect(w / 2 - 1, h - 54, 2, 24);
-      // Pocket
-      g.fillStyle(0x5a7a4a);
-      g.fillRect(12, h - 46, 8, 8);
-      // Name tag
-      g.fillStyle(0xf0e0cc);
-      g.fillRect(28, h - 50, 10, 6);
-      // Head
-      g.fillStyle(0xf0d0a0);
-      g.fillCircle(w / 2, h - 64, 12);
-      // Hair
-      g.fillStyle(0x3a2a1e);
-      g.fillEllipse(w / 2, h - 74, 22, 8);
-      // Eyes
-      g.fillStyle(0x1e1814);
-      g.fillCircle(w / 2 - 4, h - 65, 2);
-      g.fillCircle(w / 2 + 4, h - 65, 2);
-      // Hard hat
-      g.fillStyle(0xe8a840);
-      g.fillRoundedRect(w / 2 - 14, h - 80, 28, 10, 3);
-      g.fillRect(w / 2 - 10, h - 76, 20, 4);
-      g.generateTexture("player", w, h);
-      g.destroy();
+    // Use real player sprite sheet or fallback
+    if (this.textures.exists("player-walk")) {
+      this.playerSprite = this.add.sprite(0, 0, "player-walk", 0);
+      // Scale down from 384x1024 to game-appropriate size (~60x160 → then display smaller)
+      this.playerSprite.setDisplaySize(60, 160);
+
+      // Create walk animation
+      this.anims.create({
+        key: "walk",
+        frames: this.anims.generateFrameNumbers("player-walk", { start: 0, end: 3 }),
+        frameRate: 8,
+        repeat: -1,
+      });
+      this.anims.create({
+        key: "idle",
+        frames: [{ key: "player-walk", frame: 0 }],
+        frameRate: 1,
+      });
+    } else {
+      // Fallback procedural sprite
+      if (!this.textures.exists("player-fallback")) {
+        const g = this.add.graphics();
+        g.fillStyle(0xe8a840);
+        g.fillRoundedRect(8, 16, 48, 40, 6);
+        g.fillStyle(0xf0d0a0);
+        g.fillCircle(32, 16, 16);
+        g.fillStyle(0x1e1814);
+        g.fillCircle(26, 14, 3);
+        g.fillCircle(38, 14, 3);
+        g.generateTexture("player-fallback", 64, 64);
+        g.destroy();
+      }
+      this.playerSprite = this.add.sprite(0, 0, "player-fallback");
     }
 
-    this.playerSprite = this.add.sprite(0, 0, "player");
     this.player = this.add.container(GAME_W / 2, FLOOR_Y, [this.playerSprite]);
-    this.player.setSize(40, 70);
+    this.player.setSize(40, 80);
     this.player.setDepth(50);
 
     this.physics.add.existing(this.player);
@@ -468,9 +456,21 @@ export class WorldScene extends Phaser.Scene {
     this.player.y = FLOOR_Y;
     this.playerBody.setVelocityY(0);
 
-    // Flip sprite based on direction
-    if (vx < 0) this.playerSprite.setFlipX(true);
-    else if (vx > 0) this.playerSprite.setFlipX(false);
+    // Animation and facing
+    if (vx !== 0) {
+      // Walking — the sprite faces left by default, so flip for right
+      if (vx > 0) this.playerSprite.setFlipX(true);
+      else this.playerSprite.setFlipX(false);
+
+      if (this.anims.exists("walk") && this.playerSprite.anims.currentAnim?.key !== "walk") {
+        this.playerSprite.play("walk");
+      }
+    } else {
+      // Idle
+      if (this.anims.exists("idle") && this.playerSprite.anims.currentAnim?.key !== "idle") {
+        this.playerSprite.play("idle");
+      }
+    }
   }
 
   /** Transition rooms when player walks to screen edge */
