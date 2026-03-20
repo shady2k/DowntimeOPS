@@ -1,6 +1,6 @@
 # DowntimeOPS — Development Plan
 
-**Status:** Phase 0 complete ✅ — Ready for Phase 1
+**Status:** Phase 1 (vertical slice) — core loop implemented
 
 ---
 
@@ -24,73 +24,73 @@ Bootstrap the monorepo and tooling before writing game code.
 Get the full gameplay loop working, ugly but functional: **build → traffic flows → break → trace → fix.**
 
 ### Shared
-- [ ] Core type definitions: GameState, Device, Port, Link, Connection, Rack, Client, Contract
-- [ ] TracerPacket type (debugging only)
-- [ ] JSON-RPC method definitions (method names, param types, return types)
-- [ ] JSON-RPC notification types (stateDiff, alert, tracerStep)
-- [ ] Message envelope types
-- [ ] GameStorage interface
+- [x] Core type definitions: GameState, Device, Port, Link, Connection, Rack, Client, Contract
+- [x] TracerPacket type (debugging only)
+- [x] JSON-RPC method definitions (method names, param types, return types)
+- [x] JSON-RPC notification types (stateDiff, alert, tracerStep)
+- [x] Message envelope types
+- [x] GameStorage interface
 
 ### Server — Engine
-- [ ] Equipment catalog: 1U server, 1U 24-port switch, 1U router (uplink gateway in Phase 1)
-- [ ] Rack entity: 42U slot management, place/remove device
-- [ ] Port model: types, status, link reference
-- [ ] Link model: cable between two ports, bandwidth capacity
-- [ ] Connection engine: create connection, resolve path through devices, track bandwidth
-- [ ] Link utilization: aggregate active connections per link, detect congestion
-- [ ] Tick processor: advance game state per tick
-- [ ] Game clock: pause, speed (1x, 2x, 3x)
-- [ ] Basic failure generator: port goes down randomly
-- [ ] Repair action: player can fix a failed port (click to repair, costs money/time)
-- [ ] Connection recovery: when failed port is repaired, affected connections re-establish
-- [ ] Packet tracer: spawn single test packet, walk hop-by-hop with decision logging
-- [ ] Simple economy: client revenue per tick, equipment + uplink costs
-- [ ] Client generation: random prospects with simple contracts (bandwidth + uptime)
-- [ ] Accept/reject client: player reviews prospect, accepts or declines contract
-- [ ] SLA tracking: uptime calculation, violation detection
+- [x] Equipment catalog: 1U server, 1U 24-port switch, 1U router (uplink gateway in Phase 1)
+- [x] Rack entity: 42U slot management, place/remove device
+- [x] Port model: types, status, link reference
+- [x] Link model: cable between two ports, bandwidth capacity
+- [x] Connection engine: create connection, resolve path through devices, track bandwidth
+- [x] Link utilization: aggregate active connections per link, detect congestion
+- [x] Tick processor: advance game state per tick
+- [x] Game clock: pause, speed (1x, 2x, 3x)
+- [x] Basic failure generator: port goes down randomly
+- [x] Repair action: player can fix a failed port (click to repair, costs money/time)
+- [x] Connection recovery: when failed port is repaired, affected connections re-establish
+- [x] Packet tracer: spawn single test packet, walk hop-by-hop with decision logging
+- [x] Simple economy: client revenue per tick, equipment + uplink costs
+- [x] Client generation: random prospects with simple contracts (bandwidth + uptime)
+- [x] Accept/reject client: player reviews prospect, accepts or declines contract
+- [x] SLA tracking: uptime calculation, violation detection
 
 ### Server — Infrastructure
-- [ ] WebSocket server (Bun native)
-- [ ] JSON-RPC handler: parse requests, validate, dispatch to engine, send responses
-- [ ] Intent validation: check player actions are legal (slot empty? enough money? ports compatible?)
-- [ ] State diff calculator
-- [ ] State hasher (periodic integrity check)
-- [ ] Full snapshot on demand (for client resync)
-- [ ] JsonFileStorage: save/load game state to JSON files
+- [x] WebSocket server (Bun native)
+- [x] JSON-RPC handler: parse requests, validate, dispatch to engine, send responses
+- [x] Intent validation: check player actions are legal (slot empty? enough money? ports compatible?)
+- [x] State diff calculator
+- [x] State hasher (periodic integrity check)
+- [x] Full snapshot on demand (for client resync)
+- [x] JsonFileStorage: save/load game state to JSON files
 
 ### Client — Connection & Sync
-- [ ] WebSocket client (connect to server)
-- [ ] JSON-RPC client: send requests, handle responses and notifications
-- [ ] State reconciler: apply diffs to Zustand store
-- [ ] Hash check: verify state integrity, request snapshot on mismatch
-- [ ] Zustand store: game state mirror + ephemeral UI state
+- [x] WebSocket client (connect to server)
+- [x] JSON-RPC client: send requests, handle responses and notifications
+- [x] State reconciler: apply diffs to Zustand store
+- [x] Hash check: verify state integrity, request snapshot on mismatch
+- [x] Zustand store: game state mirror + ephemeral UI state
 
 ### Client — Renderer (Phaser)
-- [ ] Rack scene: draw 42U rack, show empty slots
-- [ ] Device sprites: basic rectangles with port indicators
-- [ ] Place device into rack (drag from shop → slot)
-- [ ] Cable rendering between device ports
-- [ ] Connection flow visualization (bandwidth indicators on links)
-- [ ] Port status indicators (up/down/error)
+- [x] Rack scene: draw 42U rack, show empty slots
+- [x] Device sprites: basic rectangles with port indicators
+- [x] Place device into rack (drag from shop → slot)
+- [x] Cable rendering between device ports
+- [x] Connection flow visualization (bandwidth indicators on links)
+- [x] Port status indicators (up/down/error)
 
 ### Client — UI (React)
-- [ ] Layout: game canvas + side panels
-- [ ] Equipment shop: list available equipment, buy button
-- [ ] Device panel: click device to see ports and status
-- [ ] Port interaction: click port to start cabling, click target port to connect
-- [ ] Basic connection inspector: show active connections per link, bandwidth usage
-- [ ] Basic tracer panel: create test packet, step through hops, see decisions
-- [ ] HUD top bar: money, clock, speed controls (pause/1x/2x/3x)
-- [ ] Alert bar: show active alerts (port down, SLA violation)
-- [ ] Client list: show active contracts with status
-- [ ] Client prospect panel: review incoming prospect, accept/reject contract
-- [ ] Repair interaction: click failed port/device to repair
+- [x] Layout: game canvas + side panels
+- [x] Equipment shop: list available equipment, buy button
+- [x] Device panel: click device to see ports and status
+- [x] Port interaction: click port to start cabling, click target port to connect
+- [x] Basic connection inspector: show active connections per link, bandwidth usage
+- [x] Basic tracer panel: create test packet, step through hops, see decisions
+- [x] HUD top bar: money, clock, speed controls (pause/1x/2x/3x)
+- [x] Alert bar: show active alerts (port down, SLA violation)
+- [x] Client list: show active contracts with status
+- [x] Client prospect panel: review incoming prospect, accept/reject contract
+- [x] Repair interaction: click failed port/device to repair
 
 ### Tests
-- [ ] Connection engine: path resolution, utilization aggregation
+- [x] Connection engine: path resolution, utilization aggregation
 - [ ] Failure generator: port failure affects connections
-- [ ] Tracer: hop-by-hop decisions match expected routing
-- [ ] Economy: revenue/cost calculations
+- [x] Tracer: hop-by-hop decisions match expected routing
+- [x] Economy: revenue/cost calculations
 - [ ] JSON-RPC: round-trip request/response validation
 - [ ] E2E: place device, cable ports, see connection flow (Playwright)
 
