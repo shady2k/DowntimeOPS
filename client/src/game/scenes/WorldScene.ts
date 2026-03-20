@@ -115,163 +115,69 @@ export class WorldScene extends Phaser.Scene {
   }
 
   /**
-   * Build the visual world using existing art assets.
-   * room-datacenter.png (1200x900) is placed as the datacenter background.
-   * Other rooms use warm procedural graphics matching the art palette.
+   * Build the visual world using illustrated art backgrounds.
+   * Each room is an art image placed at the correct world position.
    */
   private buildTilemap() {
-    const g = this.add.graphics().setDepth(0);
-
-    // Background void
-    g.fillStyle(0x0d0a07);
-    g.fillRect(0, 0, WORLD.width * TILE, WORLD.height * TILE);
-
-    // --- Exterior ---
     const ext = ROOMS.exterior;
-    // Night sky
-    g.fillStyle(0x0d0d1a);
-    g.fillRect(ext.x * TILE, ext.y * TILE, ext.w * TILE, ext.h * TILE);
-    // Ground/sidewalk
-    g.fillStyle(0x3a3028);
-    g.fillRect(ext.x * TILE, 8 * TILE, ext.w * TILE, 4 * TILE);
-    // Road
-    g.fillStyle(0x2a2822);
-    g.fillRect(14 * TILE, 8 * TILE, 12 * TILE, 4 * TILE);
-    // Road markings
-    g.fillStyle(0x6a6040);
-    for (let x = 15; x < 25; x += 3) {
-      g.fillRect(x * TILE, 10 * TILE, TILE, 4);
-    }
-
-    // Building facade — warm brick wall
-    g.fillStyle(0x5a3a28);
-    g.fillRect(8 * TILE, 4 * TILE, 48 * TILE, 8 * TILE);
-    // Brick texture lines
-    g.lineStyle(1, 0x4a2a18, 0.4);
-    for (let row = 0; row < 8; row++) {
-      const y = (4 + row) * TILE;
-      g.moveTo(8 * TILE, y).lineTo(56 * TILE, y);
-      const offset = row % 2 === 0 ? 0 : TILE;
-      for (let x = 8; x < 56; x += 2) {
-        g.moveTo((x + (offset ? 1 : 0)) * TILE, y).lineTo((x + (offset ? 1 : 0)) * TILE, y + TILE);
-      }
-    }
-    // Building sign
-    g.fillStyle(0x1e1814);
-    g.fillRect(16 * TILE, 5 * TILE, 8 * TILE, 2 * TILE);
-    this.add.text(17 * TILE, 5.3 * TILE, "DowntimeOPS", {
-      fontSize: "12px",
-      fontFamily: "monospace",
-      color: "#e8a840",
-      fontStyle: "bold",
-    }).setDepth(5);
-
-    // Door in facade — warm glow
-    const d1 = DOORS.exteriorToLobby;
-    g.fillStyle(0x4a3020);
-    g.fillRect(d1.x * TILE, (d1.y - 4) * TILE, d1.w * TILE, 6 * TILE);
-    // Door light glow
-    g.fillStyle(0xe8a840);
-    g.fillRect(d1.x * TILE + 8, (d1.y - 4) * TILE + 4, d1.w * TILE - 16, 4);
-
-    // Lamp posts with warm glow
-    for (const lx of [10, 30, 50]) {
-      g.fillStyle(0x504030);
-      g.fillRect(lx * TILE - 2, 5 * TILE, 4, 5 * TILE);
-      // Warm glow circle
-      g.fillStyle(0xe8a840);
-      g.fillCircle(lx * TILE, 5 * TILE, 8);
-      g.fillStyle(0xe8a840);
-      g.fillCircle(lx * TILE, 5 * TILE, 4);
-    }
-
-    // --- Lobby / Shop ---
     const lob = ROOMS.lobby;
-    // Warm wooden floor
-    g.fillStyle(0x3a2a1e);
-    g.fillRect(lob.x * TILE, lob.y * TILE, lob.w * TILE, lob.h * TILE);
-    // Floor planks
-    g.lineStyle(1, 0x2e2018, 0.5);
-    for (let ty = lob.y; ty < lob.y + lob.h; ty += 2) {
-      g.moveTo(lob.x * TILE, ty * TILE).lineTo((lob.x + lob.w) * TILE, ty * TILE);
+    const dc = ROOMS.datacenter;
+
+    // --- Exterior room background ---
+    if (this.textures.exists("room-exterior")) {
+      this.add.image(
+        ext.x * TILE + (ext.w * TILE) / 2,
+        ext.y * TILE + (ext.h * TILE) / 2,
+        "room-exterior",
+      ).setDisplaySize(ext.w * TILE, ext.h * TILE).setDepth(0);
     }
 
-    // Shop counter — wooden counter with warm glow
-    g.fillStyle(0x6a4a30);
-    g.fillRect((lob.x + 3) * TILE, (lob.y + 5) * TILE, 8 * TILE, 2 * TILE);
-    g.fillStyle(0x8a6a48);
-    g.fillRect((lob.x + 3) * TILE, (lob.y + 5) * TILE, 8 * TILE, 4);
-    // Shop sign
-    this.add.text(
-      (lob.x + 4) * TILE, (lob.y + 2) * TILE,
-      "EQUIPMENT SHOP",
-      { fontSize: "12px", fontFamily: "monospace", color: "#e8a840", fontStyle: "bold" },
-    ).setDepth(5);
+    // --- Lobby / Shop room background ---
+    if (this.textures.exists("room-shop")) {
+      this.add.image(
+        lob.x * TILE + (lob.w * TILE) / 2,
+        lob.y * TILE + (lob.h * TILE) / 2,
+        "room-shop",
+      ).setDisplaySize(lob.w * TILE, lob.h * TILE).setDepth(0);
+    }
 
-    // Shelves on wall
-    g.fillStyle(0x5a4030);
-    g.fillRect((lob.x + 1) * TILE, (lob.y + 1) * TILE, 6 * TILE, TILE);
-    g.fillRect((lob.x + 1) * TILE, (lob.y + 3) * TILE, 4 * TILE, TILE / 2);
-    // Items on shelves (small colored boxes)
-    g.fillStyle(0x3a6a40);
-    g.fillRect((lob.x + 1.5) * TILE, (lob.y + 0.5) * TILE, 12, 12);
-    g.fillStyle(0x3a6a8a);
-    g.fillRect((lob.x + 3) * TILE, (lob.y + 0.5) * TILE, 12, 12);
-    g.fillStyle(0x9a6a2a);
-    g.fillRect((lob.x + 4.5) * TILE, (lob.y + 0.5) * TILE, 12, 12);
-
-    // Ambient props: boxes, cart, cable spool
-    g.fillStyle(0x6a5540);
-    g.fillRect((lob.x + 14) * TILE, (lob.y + 16) * TILE, 2 * TILE, 2 * TILE);
-    g.fillStyle(0x5a4530);
-    g.fillRect((lob.x + 16) * TILE, (lob.y + 17) * TILE, TILE, TILE);
-    // Cable spool
-    g.fillStyle(0x504030);
-    g.fillCircle((lob.x + 2) * TILE, (lob.y + 20) * TILE, 14);
-    g.fillStyle(0x3a6a8a);
-    g.fillCircle((lob.x + 2) * TILE, (lob.y + 20) * TILE, 8);
-
-    // Door to DC
-    const d2 = DOORS.lobbyToDc;
-    g.fillStyle(0x4a3020);
-    g.fillRect(d2.x * TILE, d2.y * TILE, d2.w * TILE, d2.h * TILE);
-    // Door frame glow
-    g.fillStyle(0x60c070);
-    g.fillRect(d2.x * TILE + 4, d2.y * TILE + 4, d2.w * TILE - 8, 3);
-
-    // --- Datacenter room — use the art asset! ---
-    const dc = ROOMS.datacenter;
-    // Place the room-datacenter.png as the background for this room
+    // --- Datacenter room background ---
     if (this.textures.exists("room-bg")) {
-      const bg = this.add.image(
+      this.add.image(
         dc.x * TILE + (dc.w * TILE) / 2,
         dc.y * TILE + (dc.h * TILE) / 2,
         "room-bg",
-      ).setDepth(0);
-      // Scale to fill the datacenter room area
-      bg.setDisplaySize(dc.w * TILE, dc.h * TILE);
-    } else {
-      // Fallback: dark raised floor
-      g.fillStyle(0x1e1e20);
-      g.fillRect(dc.x * TILE, dc.y * TILE, dc.w * TILE, dc.h * TILE);
+      ).setDisplaySize(dc.w * TILE, dc.h * TILE).setDepth(0);
     }
 
-    // --- Walls (drawn on top) ---
-    // Warm brick walls matching the art style
-    g.fillStyle(0x5a3a28);
-    // Wall between lobby and DC (above door)
-    g.fillRect(28 * TILE, 14 * TILE, 2 * TILE, 10 * TILE);
-    // Wall between lobby and DC (below door)
-    g.fillRect(28 * TILE, 26 * TILE, 2 * TILE, 12 * TILE);
-    // Left wall
-    g.fillRect((lob.x - 1) * TILE, 14 * TILE, TILE, lob.h * TILE);
-    // Right wall
-    g.fillRect((dc.x + dc.w) * TILE, 14 * TILE, TILE, dc.h * TILE);
-    // Bottom wall
-    g.fillRect((lob.x - 1) * TILE, (lob.y + lob.h) * TILE, (dc.x + dc.w - lob.x + 2) * TILE, TILE);
-    // Top wall (except door)
-    g.fillRect(8 * TILE, 13 * TILE, 10 * TILE, TILE);
-    g.fillRect(20 * TILE, 13 * TILE, 36 * TILE, TILE);
+    // --- Minimal structural elements between rooms ---
+    const g = this.add.graphics().setDepth(1);
+
+    // Void/darkness outside rooms
+    g.fillStyle(0x0d0a07);
+    g.fillRect(0, 0, WORLD.width * TILE, WORLD.height * TILE);
+    // Cut out room areas (draw rooms on top at depth 0, void behind)
+
+    // Transition corridors between rooms
+    // Corridor from exterior to lobby
+    g.fillStyle(0x2a2018);
+    g.fillRect(
+      DOORS.exteriorToLobby.x * TILE,
+      ext.h * TILE,
+      DOORS.exteriorToLobby.w * TILE,
+      (lob.y - ext.h) * TILE,
+    );
+
+    // Corridor from lobby to datacenter
+    g.fillRect(
+      DOORS.lobbyToDc.x * TILE,
+      lob.y * TILE,
+      DOORS.lobbyToDc.w * TILE,
+      (dc.y - lob.y + 2) * TILE,
+    );
+
+    // Move void behind everything
+    g.setDepth(-1);
   }
 
   /**

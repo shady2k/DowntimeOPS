@@ -25,6 +25,8 @@ export class PreloadScene extends Phaser.Scene {
 
     // Backgrounds
     this.load.image("room-bg", "assets/backgrounds/room-datacenter.png");
+    this.load.image("room-exterior", "assets/backgrounds/room-exterior.png");
+    this.load.image("room-shop", "assets/backgrounds/room-shop.png");
 
     // Rack
     this.load.image("rack-frame", "assets/racks/rack-frame-42u.png");
