@@ -30,20 +30,23 @@ const ROOM_BG: Record<string, string> = {
 
 /** Room connections — which room is left/right of each room, and door targets */
 const ROOM_CONNECTIONS: Record<string, {
-  left?: string;
-  right?: string;
+  left?: { room: string; interactableId: string };
+  right?: { room: string; interactableId: string };
   doors?: Array<{ x: number; targetRoom: string; interactableId: string }>;
 }> = {
   exterior: {
     doors: [{ x: GAME_W * 0.5, targetRoom: "lobby", interactableId: "door-to-lobby" }],
   },
   lobby: {
+    left: { room: "exterior", interactableId: "door-to-exterior" },
+    right: { room: "datacenter", interactableId: "door-to-datacenter" },
     doors: [
       { x: GAME_W * 0.1, targetRoom: "exterior", interactableId: "door-to-exterior" },
       { x: GAME_W * 0.9, targetRoom: "datacenter", interactableId: "door-to-datacenter" },
     ],
   },
   datacenter: {
+    left: { room: "lobby", interactableId: "door-to-lobby" },
     doors: [{ x: GAME_W * 0.1, targetRoom: "lobby", interactableId: "door-to-lobby" }],
   },
 };
@@ -205,6 +208,28 @@ export class WorldScene extends Phaser.Scene {
       }
     }
 
+    // Edge transition arrows
+    if (conn.left) {
+      const arrow = this.add.text(15, FLOOR_Y - 30, "◀", {
+        fontSize: "24px", color: "#e8a840",
+      }).setOrigin(0.5).setDepth(5).setAlpha(0.5);
+      this.roomObjects.push(arrow);
+      const hint = this.add.text(15, FLOOR_Y - 55, conn.left.room, {
+        fontSize: "10px", fontFamily: "monospace", color: "#e8a840",
+      }).setOrigin(0.5).setDepth(5).setAlpha(0.4);
+      this.roomObjects.push(hint);
+    }
+    if (conn.right) {
+      const arrow = this.add.text(GAME_W - 15, FLOOR_Y - 30, "▶", {
+        fontSize: "24px", color: "#e8a840",
+      }).setOrigin(0.5).setDepth(5).setAlpha(0.5);
+      this.roomObjects.push(arrow);
+      const hint = this.add.text(GAME_W - 15, FLOOR_Y - 55, conn.right.room, {
+        fontSize: "10px", fontFamily: "monospace", color: "#e8a840",
+      }).setOrigin(0.5).setDepth(5).setAlpha(0.4);
+      this.roomObjects.push(hint);
+    }
+
     // Room-specific elements
     if (roomId === "lobby") {
       // Shop counter highlight
@@ -232,30 +257,55 @@ export class WorldScene extends Phaser.Scene {
   // --- Player ---
 
   private createPlayer() {
-    // Generate player sprite
+    // Generate player sprite (placeholder until real art)
     if (!this.textures.exists("player")) {
       const g = this.add.graphics();
-      // Body
-      g.fillStyle(0xe8a840);
-      g.fillRoundedRect(8, 16, 48, 40, 6);
+      const w = 48;
+      const h = 80;
+      // Shadow
+      g.fillStyle(0x000000, 0.3);
+      g.fillEllipse(w / 2, h - 4, 32, 8);
+      // Boots
+      g.fillStyle(0x3a2a1e);
+      g.fillRoundedRect(8, h - 14, 12, 14, 2);
+      g.fillRoundedRect(w - 20, h - 14, 12, 14, 2);
+      // Pants
+      g.fillStyle(0x2a3a4a);
+      g.fillRect(10, h - 34, 12, 22);
+      g.fillRect(w - 22, h - 34, 12, 22);
+      // Torso — work jacket
+      g.fillStyle(0x4a6a3a);
+      g.fillRoundedRect(6, h - 56, w - 12, 28, 4);
+      // Jacket detail
+      g.fillStyle(0x3a5a2a);
+      g.fillRect(w / 2 - 1, h - 54, 2, 24);
+      // Pocket
+      g.fillStyle(0x5a7a4a);
+      g.fillRect(12, h - 46, 8, 8);
+      // Name tag
+      g.fillStyle(0xf0e0cc);
+      g.fillRect(28, h - 50, 10, 6);
       // Head
       g.fillStyle(0xf0d0a0);
-      g.fillCircle(32, 16, 16);
+      g.fillCircle(w / 2, h - 64, 12);
+      // Hair
+      g.fillStyle(0x3a2a1e);
+      g.fillEllipse(w / 2, h - 74, 22, 8);
       // Eyes
       g.fillStyle(0x1e1814);
-      g.fillCircle(26, 14, 3);
-      g.fillCircle(38, 14, 3);
-      // Legs
-      g.fillStyle(0x5a4030);
-      g.fillRect(16, 54, 10, 10);
-      g.fillRect(38, 54, 10, 10);
-      g.generateTexture("player", 64, 64);
+      g.fillCircle(w / 2 - 4, h - 65, 2);
+      g.fillCircle(w / 2 + 4, h - 65, 2);
+      // Hard hat
+      g.fillStyle(0xe8a840);
+      g.fillRoundedRect(w / 2 - 14, h - 80, 28, 10, 3);
+      g.fillRect(w / 2 - 10, h - 76, 20, 4);
+      g.generateTexture("player", w, h);
       g.destroy();
     }
 
     this.playerSprite = this.add.sprite(0, 0, "player");
     this.player = this.add.container(GAME_W / 2, FLOOR_Y, [this.playerSprite]);
-    this.player.setSize(48, 56);
+    this.player.setSize(40, 70);
     this.player.setDepth(50);
 
     this.physics.add.existing(this.player);
@@ -429,29 +479,23 @@ export class WorldScene extends Phaser.Scene {
     if (!conn) return;
 
     if (this.player.x <= 10 && conn.left) {
-      this.transitionToRoom(conn.left, "right");
+      this.transitionToRoom(conn.left.room, conn.left.interactableId, "right");
     } else if (this.player.x >= GAME_W - 10 && conn.right) {
-      this.transitionToRoom(conn.right, "left");
+      this.transitionToRoom(conn.right.room, conn.right.interactableId, "left");
     }
   }
 
-  private transitionToRoom(targetRoom: string, enterFrom: "left" | "right") {
-    // Find the door interactable for this transition
-    const conn = ROOM_CONNECTIONS[this.currentRoom];
-    const door = conn?.doors?.find((d) => d.targetRoom === targetRoom);
-
-    if (door) {
-      rpcClient.call("enterDoor", { interactableId: door.interactableId }).then(() => {
-        const newState = useGameStore.getState().state;
-        if (newState?.world) {
-          this.enterRoom(targetRoom, newState.world);
-          this.player.setPosition(
-            enterFrom === "left" ? 40 : GAME_W - 40,
-            FLOOR_Y,
-          );
-        }
-      });
-    }
+  private transitionToRoom(targetRoom: string, interactableId: string, enterFrom: "left" | "right") {
+    rpcClient.call("enterDoor", { interactableId }).then(() => {
+      const newState = useGameStore.getState().state;
+      if (newState?.world) {
+        this.enterRoom(targetRoom, newState.world);
+        this.player.setPosition(
+          enterFrom === "left" ? 60 : GAME_W - 60,
+          FLOOR_Y,
+        );
+      }
+    });
   }
 
   private checkInteractables() {
