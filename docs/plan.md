@@ -167,17 +167,17 @@ Move primary gameplay into the rack scene so the player learns by manipulating h
 ### Sprint 2.4 — Traffic, Failures, and Visual Feedback
 Make the network state visible and legible without opening debug panels.
 
-- [ ] Add animated traffic pulses moving across active links
-- [ ] Scale traffic pulse rate and intensity by link utilization
-- [ ] Add link state visuals: idle dim, active glow, congested amber, failed red
-- [ ] Replace abstract bezier-only cables with textured cable sprites or segmented cable paths
-- [ ] Add blinking link LEDs on connected ports and device status LEDs on active hardware
-- [ ] Add failure VFX for ports/devices: sparks, smoke puffs, warning flashes, intermittent flicker
-- [ ] Add repair completion feedback: flash reset, LED recovery, traffic restoration pulse
-- [ ] Add device placement animation: slide-in/snap-in with subtle bounce
-- [ ] Add selection/highlight treatment that feels physical rather than UI-like
-- [ ] Add connection restoration feedback when a repaired path comes back online
-- [ ] Add renderer-level audio event hooks for place, connect, disconnect, alert, fail, repair, and revenue events
+- [x] Add animated traffic pulses moving across active links
+- [x] Scale traffic pulse rate and intensity by link utilization
+- [x] Add link state visuals: idle dim, active glow, congested amber, failed red
+- [x] Replace abstract bezier-only cables with textured cable sprites or segmented cable paths
+- [x] Add blinking link LEDs on connected ports and device status LEDs on active hardware
+- [x] Add failure VFX for ports/devices: sparks, smoke puffs, warning flashes, intermittent flicker
+- [x] Add repair completion feedback: flash reset, LED recovery, traffic restoration pulse
+- [x] Add device placement animation: slide-in/snap-in with subtle bounce
+- [x] Add selection/highlight treatment that feels physical rather than UI-like
+- [x] Add connection restoration feedback when a repaired path comes back online
+- [x] Add renderer-level audio event hooks for place, connect, disconnect, alert, fail, repair, and revenue events
 
 ### Sprint 2.5 — UI Restructure and Onboarding
 Support the tactile rack loop with a clearer surrounding interface.

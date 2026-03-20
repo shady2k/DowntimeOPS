@@ -1,10 +1,11 @@
 import Phaser from "phaser";
-import type { GameState, Device, Port, CableType } from "@downtime-ops/shared";
+import type { GameState, Device, Port, Link, CableType } from "@downtime-ops/shared";
 import { useGameStore } from "../store/gameStore";
 import { rpcClient } from "../rpc/client";
 import { RACK, PORT, PALETTE } from "./TextureGenerator";
+import { emitAudioEvent } from "./AudioEvents";
 
-// Layout: rack is centered in the scene
+// Layout
 const RACK_X = 370;
 const RACK_Y = 80;
 
@@ -16,11 +17,28 @@ const DEPTH = {
   DEVICES: 20,
   DEVICE_OVERLAYS: 25,
   CABLES: 30,
+  TRAFFIC_PULSES: 32,
   CABLE_PREVIEW: 35,
   EFFECTS: 40,
   TOOLTIPS: 45,
   HIT_TARGETS: 50,
 } as const;
+
+// ── Animation state types ────────────────────────────────────
+
+type TrafficPulse = {
+  linkId: string;
+  progress: number; // 0→1 along cable path
+  speed: number;
+  color: number;
+};
+
+type FailureVfx = {
+  deviceId: string;
+  flickerTimer: number;
+  sparkTimer: number;
+  visible: boolean;
+};
 
 type DeviceVisual = {
   container: Phaser.GameObjects.Container;
@@ -43,6 +61,7 @@ export class RackScene extends Phaser.Scene {
   private slotLayer!: Phaser.GameObjects.Container;
   private deviceLayer!: Phaser.GameObjects.Container;
   private cableLayer!: Phaser.GameObjects.Container;
+  private pulseLayer!: Phaser.GameObjects.Container;
   private previewLayer!: Phaser.GameObjects.Container;
   private effectLayer!: Phaser.GameObjects.Container;
   private hitLayer!: Phaser.GameObjects.Container;
@@ -50,7 +69,9 @@ export class RackScene extends Phaser.Scene {
   private deviceVisuals = new Map<string, DeviceVisual>();
   private portHitZones: PortHitZone[] = [];
   private cableGraphics: Phaser.GameObjects.Graphics | null = null;
+  private pulseGraphics: Phaser.GameObjects.Graphics | null = null;
   private previewGraphics: Phaser.GameObjects.Graphics | null = null;
+  private effectGraphics: Phaser.GameObjects.Graphics | null = null;
   private slotHighlights: Phaser.GameObjects.Image[] = [];
   private placementSlotZones: Phaser.GameObjects.Zone[] = [];
   private tooltip: Phaser.GameObjects.Container | null = null;
@@ -58,14 +79,31 @@ export class RackScene extends Phaser.Scene {
   private lastStateKey = "";
   private unsubscribe: (() => void) | null = null;
 
-  // Camera pan state
+  // Camera pan
   private isPanning = false;
   private panStart = { x: 0, y: 0 };
   private camStart = { x: 0, y: 0 };
 
-  // Cable preview tracking
+  // Mouse tracking
   private mouseWorldX = 0;
   private mouseWorldY = 0;
+
+  // ── Animation state ──────────────────────────────────────────
+  private trafficPulses: TrafficPulse[] = [];
+  private failureVfx = new Map<string, FailureVfx>();
+  private portLedTimers = new Map<string, number>(); // portId → blink phase
+  private pendingPlacements: Array<{
+    deviceId: string;
+    targetY: number;
+    startY: number;
+    progress: number;
+  }> = [];
+
+  // Track previous state for change detection (audio events)
+  private prevDeviceIds = new Set<string>();
+  private prevLinkIds = new Set<string>();
+  private prevFailedDeviceIds = new Set<string>();
+  private prevFailedPortKeys = new Set<string>();
 
   constructor() {
     super({ key: "RackScene" });
@@ -83,9 +121,17 @@ export class RackScene extends Phaser.Scene {
     this.cableGraphics.setDepth(DEPTH.CABLES);
     this.cableLayer.add(this.cableGraphics);
 
+    this.pulseGraphics = this.add.graphics();
+    this.pulseGraphics.setDepth(DEPTH.TRAFFIC_PULSES);
+    this.pulseLayer.add(this.pulseGraphics);
+
     this.previewGraphics = this.add.graphics();
     this.previewGraphics.setDepth(DEPTH.CABLE_PREVIEW);
     this.previewLayer.add(this.previewGraphics);
+
+    this.effectGraphics = this.add.graphics();
+    this.effectGraphics.setDepth(DEPTH.EFFECTS);
+    this.effectLayer.add(this.effectGraphics);
 
     // Subscribe to store
     this.unsubscribe = useGameStore.subscribe((store) => {
@@ -110,13 +156,21 @@ export class RackScene extends Phaser.Scene {
       if (stateKey === this.lastStateKey) return;
       this.lastStateKey = stateKey;
 
+      this.detectChangesAndEmitAudio(state);
       this.renderAll(state, store);
+      this.syncAnimationState(state);
     });
 
     // Initial render
     const store = useGameStore.getState();
     if (store.state) {
       this.renderAll(store.state, store);
+      this.syncAnimationState(store.state);
+      // Seed prev-state trackers
+      for (const id of Object.keys(store.state.devices))
+        this.prevDeviceIds.add(id);
+      for (const id of Object.keys(store.state.links))
+        this.prevLinkIds.add(id);
     }
 
     this.scale.on("resize", this.handleResize, this);
@@ -127,9 +181,13 @@ export class RackScene extends Phaser.Scene {
     this.scale.off("resize", this.handleResize, this);
   }
 
-  update() {
-    // Update cable preview each frame (follows mouse)
+  update(_time: number, delta: number) {
+    const dt = delta / 1000;
+    this.updateTrafficPulses(dt);
+    this.updateFailureVfx(dt);
+    this.updatePlacementAnimations(dt);
     this.renderCablePreview();
+    this.renderAnimatedEffects();
   }
 
   // ── Layers ───────────────────────────────────────────────────
@@ -140,6 +198,7 @@ export class RackScene extends Phaser.Scene {
     this.slotLayer = this.add.container(0, 0).setDepth(DEPTH.SLOT_HIGHLIGHTS);
     this.deviceLayer = this.add.container(0, 0).setDepth(DEPTH.DEVICES);
     this.cableLayer = this.add.container(0, 0).setDepth(DEPTH.CABLES);
+    this.pulseLayer = this.add.container(0, 0).setDepth(DEPTH.TRAFFIC_PULSES);
     this.previewLayer = this.add.container(0, 0).setDepth(DEPTH.CABLE_PREVIEW);
     this.effectLayer = this.add.container(0, 0).setDepth(DEPTH.EFFECTS);
     this.hitLayer = this.add.container(0, 0).setDepth(DEPTH.HIT_TARGETS);
@@ -156,7 +215,9 @@ export class RackScene extends Phaser.Scene {
   // ── Rack frame ───────────────────────────────────────────────
 
   private createRackFrame() {
-    const frame = this.add.image(RACK_X, RACK_Y, "rack-frame").setOrigin(0, 0);
+    const frame = this.add
+      .image(RACK_X, RACK_Y, "rack-frame")
+      .setOrigin(0, 0);
     frame.setDepth(DEPTH.RACK_FRAME);
     this.rackLayer.add(frame);
 
@@ -206,7 +267,6 @@ export class RackScene extends Phaser.Scene {
   // ── Input ────────────────────────────────────────────────────
 
   private setupInput() {
-    // Zoom with mouse wheel
     this.input.on(
       "wheel",
       (
@@ -221,7 +281,6 @@ export class RackScene extends Phaser.Scene {
       },
     );
 
-    // Pan with middle mouse drag
     this.input.on("pointerdown", (pointer: Phaser.Input.Pointer) => {
       if (pointer.middleButtonDown()) {
         this.isPanning = true;
@@ -233,8 +292,10 @@ export class RackScene extends Phaser.Scene {
     });
 
     this.input.on("pointermove", (pointer: Phaser.Input.Pointer) => {
-      // Track mouse world position for cable preview
-      const worldPoint = this.cameras.main.getWorldPoint(pointer.x, pointer.y);
+      const worldPoint = this.cameras.main.getWorldPoint(
+        pointer.x,
+        pointer.y,
+      );
       this.mouseWorldX = worldPoint.x;
       this.mouseWorldY = worldPoint.y;
 
@@ -250,14 +311,12 @@ export class RackScene extends Phaser.Scene {
       this.isPanning = false;
     });
 
-    // Escape cancels cabling/placing
     this.input.keyboard?.on("keydown-ESC", () => {
       const store = useGameStore.getState();
       if (store.cablingFrom) store.cancelCabling();
       if (store.placingModel) store.cancelPlacing();
     });
 
-    // Right-click on background cancels cabling/placing
     this.input.on("pointerdown", (pointer: Phaser.Input.Pointer) => {
       if (pointer.rightButtonDown()) {
         const store = useGameStore.getState();
@@ -281,6 +340,82 @@ export class RackScene extends Phaser.Scene {
     return RACK_X + RACK.RAIL_WIDTH + 2;
   }
 
+  // ── Audio event detection ────────────────────────────────────
+
+  private detectChangesAndEmitAudio(state: GameState) {
+    const currentDeviceIds = new Set(Object.keys(state.devices));
+    const currentLinkIds = new Set(Object.keys(state.links));
+    const currentFailedDeviceIds = new Set<string>();
+    const currentFailedPortKeys = new Set<string>();
+
+    for (const device of Object.values(state.devices)) {
+      if (device.status === "failed") currentFailedDeviceIds.add(device.id);
+      for (const port of device.ports) {
+        if (port.status === "down")
+          currentFailedPortKeys.add(`${device.id}:${port.index}`);
+      }
+    }
+
+    // New devices placed
+    for (const id of currentDeviceIds) {
+      if (!this.prevDeviceIds.has(id)) {
+        emitAudioEvent("device_place", { deviceId: id });
+        // Queue placement animation
+        const device = state.devices[id];
+        if (device) {
+          this.pendingPlacements.push({
+            deviceId: id,
+            targetY: this.slotY(device.slotU) + 1,
+            startY: this.slotY(device.slotU) - 20,
+            progress: 0,
+          });
+        }
+      }
+    }
+    // Devices removed
+    for (const id of this.prevDeviceIds) {
+      if (!currentDeviceIds.has(id)) emitAudioEvent("device_remove", { deviceId: id });
+    }
+
+    // New links
+    for (const id of currentLinkIds) {
+      if (!this.prevLinkIds.has(id)) emitAudioEvent("cable_connect", { linkId: id });
+    }
+    // Removed links
+    for (const id of this.prevLinkIds) {
+      if (!currentLinkIds.has(id)) emitAudioEvent("cable_disconnect", { linkId: id });
+    }
+
+    // Device failures
+    for (const id of currentFailedDeviceIds) {
+      if (!this.prevFailedDeviceIds.has(id))
+        emitAudioEvent("device_fail", { deviceId: id });
+    }
+    // Device recoveries
+    for (const id of this.prevFailedDeviceIds) {
+      if (!currentFailedDeviceIds.has(id) && currentDeviceIds.has(id))
+        emitAudioEvent("device_recover", { deviceId: id });
+    }
+
+    // Port failures
+    for (const key of currentFailedPortKeys) {
+      if (!this.prevFailedPortKeys.has(key))
+        emitAudioEvent("port_fail", { portKey: key });
+    }
+    // Port repairs
+    for (const key of this.prevFailedPortKeys) {
+      if (!currentFailedPortKeys.has(key)) {
+        emitAudioEvent("port_repair", { portKey: key });
+        emitAudioEvent("traffic_restore", { portKey: key });
+      }
+    }
+
+    this.prevDeviceIds = currentDeviceIds;
+    this.prevLinkIds = currentLinkIds;
+    this.prevFailedDeviceIds = currentFailedDeviceIds;
+    this.prevFailedPortKeys = currentFailedPortKeys;
+  }
+
   // ── Full render ──────────────────────────────────────────────
 
   private renderAll(
@@ -290,6 +425,279 @@ export class RackScene extends Phaser.Scene {
     this.renderDevices(state, store);
     this.renderCables(state, store);
     this.renderPlacementSlots(state, store);
+  }
+
+  // ── Sync animation state with game state ─────────────────────
+
+  private syncAnimationState(state: GameState) {
+    // Sync traffic pulses: spawn/despawn based on active links
+    const activeLinkIds = new Set<string>();
+    for (const link of Object.values(state.links)) {
+      if (link.status !== "cut" && link.currentLoadMbps > 0) {
+        activeLinkIds.add(link.id);
+      }
+    }
+
+    // Remove pulses for dead links
+    this.trafficPulses = this.trafficPulses.filter((p) =>
+      activeLinkIds.has(p.linkId),
+    );
+
+    // Spawn pulses for links that need more
+    for (const link of Object.values(state.links)) {
+      if (!activeLinkIds.has(link.id)) continue;
+
+      const utilization =
+        link.maxBandwidthMbps > 0
+          ? link.currentLoadMbps / link.maxBandwidthMbps
+          : 0;
+
+      // Target pulse count: 1 at low util, up to 4 at high util
+      const targetCount = Math.max(1, Math.ceil(utilization * 4));
+      const existing = this.trafficPulses.filter(
+        (p) => p.linkId === link.id,
+      ).length;
+
+      const color =
+        utilization > 0.9
+          ? PALETTE.cableCongested
+          : utilization > 0.5
+            ? 0x66bb88
+            : PALETTE.portUp;
+
+      for (let i = existing; i < targetCount; i++) {
+        this.trafficPulses.push({
+          linkId: link.id,
+          progress: i / targetCount, // stagger
+          speed: 0.3 + utilization * 0.7, // faster at higher util
+          color,
+        });
+      }
+
+      // Trim excess
+      if (existing > targetCount) {
+        let removed = 0;
+        this.trafficPulses = this.trafficPulses.filter((p) => {
+          if (p.linkId === link.id && removed < existing - targetCount) {
+            removed++;
+            return false;
+          }
+          return true;
+        });
+      }
+    }
+
+    // Sync failure VFX
+    for (const device of Object.values(state.devices)) {
+      if (device.status === "failed" && !this.failureVfx.has(device.id)) {
+        this.failureVfx.set(device.id, {
+          deviceId: device.id,
+          flickerTimer: 0,
+          sparkTimer: 0,
+          visible: true,
+        });
+      }
+      if (device.status !== "failed" && this.failureVfx.has(device.id)) {
+        this.failureVfx.delete(device.id);
+      }
+    }
+  }
+
+  // ── Animation updates (per frame) ───────────────────────────
+
+  private updateTrafficPulses(dt: number) {
+    for (const pulse of this.trafficPulses) {
+      pulse.progress += pulse.speed * dt;
+      if (pulse.progress > 1) pulse.progress -= 1;
+    }
+  }
+
+  private updateFailureVfx(dt: number) {
+    for (const [, vfx] of this.failureVfx) {
+      vfx.flickerTimer += dt;
+      vfx.sparkTimer += dt;
+
+      // Intermittent flicker: toggle visibility
+      if (vfx.flickerTimer > 0.1 + Math.random() * 0.2) {
+        vfx.flickerTimer = 0;
+        vfx.visible = Math.random() > 0.3; // mostly visible, occasional flicker off
+      }
+    }
+  }
+
+  private updatePlacementAnimations(dt: number) {
+    for (const anim of this.pendingPlacements) {
+      anim.progress = Math.min(1, anim.progress + dt * 4); // 0.25s animation
+    }
+
+    // Apply to device containers
+    for (const anim of this.pendingPlacements) {
+      const visual = this.deviceVisuals.get(anim.deviceId);
+      if (!visual) continue;
+
+      if (anim.progress < 1) {
+        // Ease-out bounce
+        const t = anim.progress;
+        const ease = 1 - Math.pow(1 - t, 3); // cubic ease-out
+        const bounce = t < 0.8 ? ease : ease + Math.sin((t - 0.8) * Math.PI * 5) * 0.01 * (1 - t);
+        const y = anim.startY + (anim.targetY - anim.startY) * bounce;
+        visual.container.setY(y);
+      } else {
+        visual.container.setY(anim.targetY);
+      }
+    }
+
+    // Remove completed
+    this.pendingPlacements = this.pendingPlacements.filter(
+      (a) => a.progress < 1,
+    );
+  }
+
+  // ── Animated rendering (per frame) ──────────────────────────
+
+  private renderAnimatedEffects() {
+    this.renderTrafficPulses();
+    this.renderFailureEffects();
+    this.renderPortLedBlinks();
+  }
+
+  private renderTrafficPulses() {
+    if (!this.pulseGraphics) return;
+    this.pulseGraphics.clear();
+
+    const state = useGameStore.getState().state;
+    if (!state) return;
+
+    for (const pulse of this.trafficPulses) {
+      const link = state.links[pulse.linkId];
+      if (!link) continue;
+
+      const devA = state.devices[link.portA.deviceId];
+      const devB = state.devices[link.portB.deviceId];
+      if (!devA || !devB) continue;
+
+      const posA = this.getPortWorldPos(devA, link.portA.portIndex);
+      const posB = this.getPortWorldPos(devB, link.portB.portIndex);
+      if (!posA || !posB) continue;
+
+      // Calculate position along the L-shaped cable path
+      const pos = this.interpolateCablePath(posA, posB, pulse.progress);
+
+      // Pulse dot with glow
+      const size = 2 + (link.currentLoadMbps / Math.max(link.maxBandwidthMbps, 1)) * 2;
+      this.pulseGraphics.fillStyle(pulse.color, 0.3);
+      this.pulseGraphics.fillCircle(pos.x, pos.y, size + 2);
+      this.pulseGraphics.fillStyle(pulse.color, 0.8);
+      this.pulseGraphics.fillCircle(pos.x, pos.y, size);
+    }
+  }
+
+  private interpolateCablePath(
+    posA: { x: number; y: number },
+    posB: { x: number; y: number },
+    t: number,
+  ): { x: number; y: number } {
+    const exitX =
+      RACK_X + RACK.WIDTH + 20 + Math.abs(posA.y - posB.y) * 0.25;
+
+    // Three segments: A→exitX, exitX down, exitX→B
+    const seg1Len = exitX - posA.x;
+    const seg2Len = Math.abs(posB.y - posA.y);
+    const seg3Len = exitX - posB.x;
+    const totalLen = seg1Len + seg2Len + seg3Len;
+
+    const dist = t * totalLen;
+
+    if (dist <= seg1Len) {
+      return { x: posA.x + dist, y: posA.y };
+    } else if (dist <= seg1Len + seg2Len) {
+      const segT = (dist - seg1Len) / seg2Len;
+      return { x: exitX, y: posA.y + (posB.y - posA.y) * segT };
+    } else {
+      const segT = (dist - seg1Len - seg2Len) / seg3Len;
+      return { x: exitX - segT * seg3Len, y: posB.y };
+    }
+  }
+
+  private renderFailureEffects() {
+    if (!this.effectGraphics) return;
+    this.effectGraphics.clear();
+
+    const state = useGameStore.getState().state;
+    if (!state) return;
+
+    for (const [deviceId, vfx] of this.failureVfx) {
+      const device = state.devices[deviceId];
+      if (!device) continue;
+
+      const x = this.deviceX();
+      const y = this.slotY(device.slotU) + 1;
+      const w = RACK.INNER_WIDTH - 4;
+      const h = device.uHeight * RACK.SLOT_HEIGHT - 2;
+
+      // Intermittent red flash overlay
+      if (!vfx.visible) {
+        this.effectGraphics.fillStyle(PALETTE.portDown, 0.15);
+        this.effectGraphics.fillRect(x, y, w, h);
+      }
+
+      // Spark particles (small random dots around device)
+      if (vfx.sparkTimer > 0.3 + Math.random() * 0.5) {
+        vfx.sparkTimer = 0;
+      }
+      const sparkPhase = vfx.sparkTimer / 0.4;
+      if (sparkPhase < 0.15) {
+        const sparkCount = 2 + Math.floor(Math.random() * 3);
+        for (let i = 0; i < sparkCount; i++) {
+          const sx = x + Math.random() * w;
+          const sy = y + Math.random() * h;
+          const sparkAlpha = 1 - sparkPhase / 0.15;
+          this.effectGraphics.fillStyle(0xffaa44, sparkAlpha * 0.8);
+          this.effectGraphics.fillCircle(sx, sy, 1 + Math.random() * 1.5);
+        }
+      }
+
+      // Warning flash border
+      const flashAlpha = 0.2 + Math.sin(this.time.now * 0.006) * 0.15;
+      this.effectGraphics.lineStyle(1.5, PALETTE.portDown, flashAlpha);
+      this.effectGraphics.strokeRect(x - 1, y - 1, w + 2, h + 2);
+    }
+
+    // Failed port sparks
+    for (const device of Object.values(state.devices)) {
+      for (const port of device.ports) {
+        if (port.status !== "down") continue;
+        const pos = this.getPortWorldPos(device, port.index);
+        if (!pos) continue;
+
+        // Red pulsing ring
+        const pulseScale =
+          0.8 + Math.sin(this.time.now * 0.005 + port.index) * 0.3;
+        this.effectGraphics.lineStyle(1, PALETTE.portDown, 0.4 * pulseScale);
+        this.effectGraphics.strokeCircle(
+          pos.x,
+          pos.y,
+          PORT.RADIUS + 3 * pulseScale,
+        );
+      }
+    }
+  }
+
+  private renderPortLedBlinks() {
+    // Port LED blink effect is handled by alpha modulation on port sprites
+    // during createPorts — here we just update timers
+    const state = useGameStore.getState().state;
+    if (!state) return;
+
+    for (const device of Object.values(state.devices)) {
+      for (const port of device.ports) {
+        if (!port.linkId) continue;
+        const key = port.id;
+        const phase = (this.portLedTimers.get(key) ?? Math.random() * 6.28) +
+          0.05; // ~20Hz base rate
+        this.portLedTimers.set(key, phase);
+      }
+    }
   }
 
   // ── Device rendering ─────────────────────────────────────────
@@ -321,33 +729,28 @@ export class RackScene extends Phaser.Scene {
 
     // Determine highlighted devices from alert or client
     const highlightedDeviceIds = new Set<string>();
-    const highlightedLinkIds = new Set<string>();
 
-    // Alert highlighting
     if (store.highlightedAlertId && state.alerts) {
-      const alert = state.alerts.find((a) => a.id === store.highlightedAlertId);
+      const alert = state.alerts.find(
+        (a) => a.id === store.highlightedAlertId,
+      );
       if (alert?.deviceId) highlightedDeviceIds.add(alert.deviceId);
     }
 
-    // Client-to-path highlighting
     if (store.selectedClientId) {
-      // Find connections belonging to this client
       for (const conn of Object.values(state.connections)) {
         if (conn.clientId === store.selectedClientId && conn.path) {
           for (const hop of conn.path) {
             highlightedDeviceIds.add(hop.deviceId);
-            if (hop.linkId) highlightedLinkIds.add(hop.linkId);
           }
         }
       }
     }
 
-    // Create/update device visuals
     for (const device of Object.values(state.devices)) {
       const selected = device.id === store.selectedDeviceId;
       const highlighted = highlightedDeviceIds.has(device.id);
 
-      // Always recreate (device count is small)
       const existing = this.deviceVisuals.get(device.id);
       if (existing) {
         existing.container.destroy();
@@ -391,20 +794,38 @@ export class RackScene extends Phaser.Scene {
     const overlay = this.createStateOverlay(device, selected, h);
     if (overlay) container.add(overlay);
 
-    // Path highlight glow
+    // Path highlight — physical glow with double-border
     if (highlighted) {
-      const glowG = this.add.graphics();
-      glowG.lineStyle(2, PALETTE.highlight, 0.6);
-      glowG.strokeRoundedRect(-1, -1, w + 2, h + 2, 3);
-      container.add(glowG);
+      const glowOuter = this.add.graphics();
+      glowOuter.lineStyle(3, PALETTE.highlight, 0.25);
+      glowOuter.strokeRoundedRect(-2, -2, w + 4, h + 4, 4);
+      container.add(glowOuter);
+
+      const glowInner = this.add.graphics();
+      glowInner.lineStyle(1.5, PALETTE.highlight, 0.6);
+      glowInner.strokeRoundedRect(-1, -1, w + 2, h + 2, 3);
+      container.add(glowInner);
     }
 
-    // Selection border
+    // Selection — thick beveled border, physical feel
     if (selected) {
+      // Outer shadow
+      const shadowG = this.add.graphics();
+      shadowG.fillStyle(0x000000, 0.3);
+      shadowG.fillRoundedRect(1, 1, w, h, 2);
+      container.add(shadowG);
+
+      // Selection border
       const borderG = this.add.graphics();
-      borderG.lineStyle(2, PALETTE.deviceSelected, 0.8);
+      borderG.lineStyle(2.5, PALETTE.deviceSelected, 0.9);
       borderG.strokeRoundedRect(0, 0, w, h, 2);
       container.add(borderG);
+
+      // Inner highlight line (top edge)
+      const innerG = this.add.graphics();
+      innerG.lineStyle(1, 0xffffff, 0.15);
+      innerG.lineBetween(3, 1, w - 3, 1);
+      container.add(innerG);
     }
 
     // Device name
@@ -417,7 +838,7 @@ export class RackScene extends Phaser.Scene {
       .setOrigin(0, 0.5);
     container.add(label);
 
-    // Status LED
+    // Status LED with blink for active devices
     const statusLed = this.add.graphics();
     this.drawStatusLed(statusLed, device, w - 20, h / 2);
     container.add(statusLed);
@@ -427,7 +848,7 @@ export class RackScene extends Phaser.Scene {
 
     sprite.setAlpha(selected ? 1 : 0.85);
 
-    // Device hit zone
+    // Hit zone
     const hitZone = this.add
       .zone(x, y, w, h)
       .setOrigin(0, 0)
@@ -440,7 +861,6 @@ export class RackScene extends Phaser.Scene {
       }
     });
 
-    // Tooltip on hover
     hitZone.on("pointerover", () => {
       this.showTooltip(device, state, x + w + 8, y);
     });
@@ -487,17 +907,31 @@ export class RackScene extends Phaser.Scene {
             ? PALETTE.portErr
             : PALETTE.portOff;
 
+    // Glow for active devices
     if (device.status === "online") {
-      g.fillStyle(color, 0.2);
-      g.fillCircle(x, y, 5);
+      const glowPulse =
+        0.15 + Math.sin(this.time.now * 0.002) * 0.05;
+      g.fillStyle(color, glowPulse);
+      g.fillCircle(x, y, 6);
     }
+
+    // LED dot
     g.fillStyle(color, 1);
     g.fillCircle(x, y, 3);
+
+    // Highlight pip
+    g.fillStyle(0xffffff, 0.3);
+    g.fillCircle(x - 0.5, y - 1, 1);
   }
 
   // ── Tooltip ──────────────────────────────────────────────────
 
-  private showTooltip(device: Device, state: GameState, x: number, y: number) {
+  private showTooltip(
+    device: Device,
+    state: GameState,
+    x: number,
+    y: number,
+  ) {
     this.hideTooltip();
 
     const connectedPorts = device.ports.filter((p) => p.linkId).length;
@@ -516,7 +950,6 @@ export class RackScene extends Phaser.Scene {
 
     const container = this.add.container(x, y).setDepth(DEPTH.TOOLTIPS);
 
-    // Background
     const bg = this.add.graphics();
     bg.fillStyle(0x1a1a2e, 0.95);
     bg.fillRoundedRect(0, 0, textWidth + padding * 2, bgHeight, 4);
@@ -524,19 +957,22 @@ export class RackScene extends Phaser.Scene {
     bg.strokeRoundedRect(0, 0, textWidth + padding * 2, bgHeight, 4);
     container.add(bg);
 
-    // Text lines
     for (let i = 0; i < lines.length; i++) {
       const isTitle = i === 0;
-      const text = this.add.text(padding, padding + i * lineHeight, lines[i], {
-        fontSize: isTitle ? "10px" : "9px",
-        color: isTitle ? "#ecf0f1" : "#95a5a6",
-        fontFamily: "monospace",
-        fontStyle: isTitle ? "bold" : "normal",
-      });
+      const text = this.add.text(
+        padding,
+        padding + i * lineHeight,
+        lines[i],
+        {
+          fontSize: isTitle ? "10px" : "9px",
+          color: isTitle ? "#ecf0f1" : "#95a5a6",
+          fontFamily: "monospace",
+          fontStyle: isTitle ? "bold" : "normal",
+        },
+      );
       container.add(text);
     }
 
-    // Context actions hint
     const store = useGameStore.getState();
     if (!store.cablingFrom && !store.placingModel) {
       const hint = this.add.text(
@@ -585,27 +1021,35 @@ export class RackScene extends Phaser.Scene {
       const portImg = this.add.image(px, py, portKey);
       container.add(portImg);
 
-      // Connected overlay
+      // Connected overlay + blinking LED
       if (port.linkId) {
         const connImg = this.add.image(px, py, "port-connected");
         container.add(connImg);
+
+        // Blinking activity LED (small green dot above port)
+        const link = state.links[port.linkId];
+        if (link && link.currentLoadMbps > 0) {
+          const ledG = this.add.graphics();
+          const phase = this.portLedTimers.get(port.id) ?? 0;
+          const blinkAlpha = 0.3 + Math.sin(phase) * 0.3;
+          ledG.fillStyle(PALETTE.portUp, blinkAlpha);
+          ledG.fillCircle(px, py - PORT.RADIUS - 2, 1.5);
+          container.add(ledG);
+        }
       }
 
-      // Cabling highlight: valid targets glow, source port highlighted
+      // Cabling highlights
       if (isCabling) {
-        const isSource =
-          isSourceDevice && cablingFrom.portIndex === i;
+        const isSource = isSourceDevice && cablingFrom.portIndex === i;
         const isValidTarget =
           !isSourceDevice && !port.linkId && port.status === "up";
 
         if (isSource) {
-          // Highlight source port
           const sourceG = this.add.graphics();
           sourceG.lineStyle(2, PALETTE.highlight, 1);
           sourceG.strokeCircle(px, py, PORT.RADIUS + 3);
           container.add(sourceG);
         } else if (isValidTarget) {
-          // Highlight valid target
           const targetG = this.add.graphics();
           targetG.lineStyle(1.5, PALETTE.portUp, 0.6);
           targetG.strokeCircle(px, py, PORT.RADIUS + 2);
@@ -613,7 +1057,7 @@ export class RackScene extends Phaser.Scene {
         }
       }
 
-      // Port hit zone (oversized)
+      // Port hit zone
       const worldX = this.deviceX() + px;
       const worldY = this.slotY(device.slotU) + 1 + py;
 
@@ -628,7 +1072,6 @@ export class RackScene extends Phaser.Scene {
       });
 
       portZone.on("pointerover", () => {
-        // Hover highlight on port
         portImg.setScale(1.3);
       });
       portZone.on("pointerout", () => {
@@ -645,7 +1088,6 @@ export class RackScene extends Phaser.Scene {
       });
     }
 
-    // Overflow label
     if (device.ports.length > 24) {
       const overflowLabel = this.add
         .text(
@@ -672,19 +1114,13 @@ export class RackScene extends Phaser.Scene {
     const store = useGameStore.getState();
 
     if (store.cablingFrom) {
-      // Complete the cable
       const source = store.cablingFrom;
-
-      // Can't cable to same device
       if (source.deviceId === device.id) {
         store.cancelCabling();
         return;
       }
-
-      // Target must be available
       if (port.linkId || port.status !== "up") return;
 
-      // Send RPC
       rpcClient
         .call("connectPorts", {
           portA: `${source.deviceId}-p${source.portIndex}`,
@@ -699,15 +1135,10 @@ export class RackScene extends Phaser.Scene {
 
       store.cancelCabling();
     } else if (port.linkId) {
-      // Clicking a connected port — offer disconnect
-      // For now, right-click disconnects
-      // Left-click on connected port selects device
       store.selectDevice(device.id);
     } else if (port.status === "up") {
-      // Start cabling from this port
       store.startCabling({ deviceId: device.id, portIndex });
     } else if (port.status === "down") {
-      // Repair action
       rpcClient
         .call("repairPort", { deviceId: device.id, portIndex })
         .catch(() => {});
@@ -742,7 +1173,6 @@ export class RackScene extends Phaser.Scene {
     const sourcePos = this.getPortWorldPos(device, store.cablingFrom.portIndex);
     if (!sourcePos) return;
 
-    // Draw preview cable from source port to mouse
     this.previewGraphics.lineStyle(2, PALETTE.highlight, 0.5);
 
     const midX =
@@ -758,7 +1188,6 @@ export class RackScene extends Phaser.Scene {
     this.previewGraphics.lineTo(this.mouseWorldX, this.mouseWorldY);
     this.previewGraphics.strokePath();
 
-    // Pulsing dot at source
     const t = this.time.now * 0.003;
     const pulseAlpha = 0.4 + Math.sin(t) * 0.3;
     this.previewGraphics.fillStyle(PALETTE.highlight, pulseAlpha);
@@ -774,7 +1203,6 @@ export class RackScene extends Phaser.Scene {
     if (!this.cableGraphics) return;
     this.cableGraphics.clear();
 
-    // Determine highlighted links
     const highlightedLinkIds = new Set<string>();
     if (store.selectedClientId) {
       for (const conn of Object.values(state.connections)) {
@@ -787,50 +1215,94 @@ export class RackScene extends Phaser.Scene {
     }
 
     for (const link of Object.values(state.links)) {
-      const devA = state.devices[link.portA.deviceId];
-      const devB = state.devices[link.portB.deviceId];
-      if (!devA || !devB) continue;
-
-      const posA = this.getPortWorldPos(devA, link.portA.portIndex);
-      const posB = this.getPortWorldPos(devB, link.portB.portIndex);
-      if (!posA || !posB) continue;
-
-      const utilization =
-        link.maxBandwidthMbps > 0
-          ? link.currentLoadMbps / link.maxBandwidthMbps
-          : 0;
-
-      const isHighlighted = highlightedLinkIds.has(link.id);
-      const alpha = isHighlighted
-        ? 1
-        : Math.max(0.3, Math.min(1, 0.3 + utilization * 0.7));
-
-      const color = isHighlighted
-        ? PALETTE.highlight
-        : link.status === "cut"
-          ? PALETTE.cableCut
-          : utilization > 0.9
-            ? PALETTE.cableCongested
-            : PALETTE.cable;
-
-      const lineWidth = isHighlighted ? 3 : 2.5;
-      this.cableGraphics.lineStyle(lineWidth, color, alpha);
-
-      const exitX =
-        RACK_X + RACK.WIDTH + 20 + Math.abs(posA.y - posB.y) * 0.25;
-
-      this.cableGraphics.beginPath();
-      this.cableGraphics.moveTo(posA.x, posA.y);
-      this.cableGraphics.lineTo(exitX, posA.y);
-      this.cableGraphics.lineTo(exitX, posB.y);
-      this.cableGraphics.lineTo(posB.x, posB.y);
-      this.cableGraphics.strokePath();
-
-      // Endpoint dots
-      this.cableGraphics.fillStyle(color, alpha);
-      this.cableGraphics.fillCircle(posA.x, posA.y, 2);
-      this.cableGraphics.fillCircle(posB.x, posB.y, 2);
+      this.renderSingleCable(state, link, highlightedLinkIds.has(link.id));
     }
+  }
+
+  private renderSingleCable(
+    state: GameState,
+    link: Link,
+    isHighlighted: boolean,
+  ) {
+    if (!this.cableGraphics) return;
+
+    const devA = state.devices[link.portA.deviceId];
+    const devB = state.devices[link.portB.deviceId];
+    if (!devA || !devB) return;
+
+    const posA = this.getPortWorldPos(devA, link.portA.portIndex);
+    const posB = this.getPortWorldPos(devB, link.portB.portIndex);
+    if (!posA || !posB) return;
+
+    const utilization =
+      link.maxBandwidthMbps > 0
+        ? link.currentLoadMbps / link.maxBandwidthMbps
+        : 0;
+
+    // Link state colors
+    let color: number;
+    let alpha: number;
+    let lineWidth: number;
+
+    if (isHighlighted) {
+      color = PALETTE.highlight;
+      alpha = 1;
+      lineWidth = 3;
+    } else if (link.status === "cut") {
+      color = PALETTE.cableCut;
+      alpha = 0.8;
+      lineWidth = 2.5;
+    } else if (utilization > 0.9) {
+      // Congested — amber with pulse
+      color = PALETTE.cableCongested;
+      alpha = 0.7 + Math.sin(this.time.now * 0.004) * 0.15;
+      lineWidth = 3;
+    } else if (utilization > 0) {
+      // Active — brighter glow proportional to load
+      color = PALETTE.cable;
+      alpha = 0.4 + utilization * 0.5;
+      lineWidth = 2.5;
+    } else {
+      // Idle — dim
+      color = PALETTE.cable;
+      alpha = 0.2;
+      lineWidth = 2;
+    }
+
+    const exitX =
+      RACK_X + RACK.WIDTH + 20 + Math.abs(posA.y - posB.y) * 0.25;
+
+    // Cable shadow (subtle depth)
+    this.cableGraphics.lineStyle(lineWidth + 1, 0x000000, alpha * 0.15);
+    this.cableGraphics.beginPath();
+    this.cableGraphics.moveTo(posA.x + 1, posA.y + 1);
+    this.cableGraphics.lineTo(exitX + 1, posA.y + 1);
+    this.cableGraphics.lineTo(exitX + 1, posB.y + 1);
+    this.cableGraphics.lineTo(posB.x + 1, posB.y + 1);
+    this.cableGraphics.strokePath();
+
+    // Main cable
+    this.cableGraphics.lineStyle(lineWidth, color, alpha);
+    this.cableGraphics.beginPath();
+    this.cableGraphics.moveTo(posA.x, posA.y);
+    this.cableGraphics.lineTo(exitX, posA.y);
+    this.cableGraphics.lineTo(exitX, posB.y);
+    this.cableGraphics.lineTo(posB.x, posB.y);
+    this.cableGraphics.strokePath();
+
+    // Cable highlight (top edge, simulates sheen)
+    if (alpha > 0.3) {
+      this.cableGraphics.lineStyle(1, 0xffffff, alpha * 0.08);
+      this.cableGraphics.beginPath();
+      this.cableGraphics.moveTo(posA.x, posA.y - 1);
+      this.cableGraphics.lineTo(exitX, posA.y - 1);
+      this.cableGraphics.strokePath();
+    }
+
+    // Endpoint dots
+    this.cableGraphics.fillStyle(color, alpha);
+    this.cableGraphics.fillCircle(posA.x, posA.y, 2.5);
+    this.cableGraphics.fillCircle(posB.x, posB.y, 2.5);
   }
 
   private getPortWorldPos(
@@ -850,13 +1322,11 @@ export class RackScene extends Phaser.Scene {
     state: GameState,
     store: ReturnType<typeof useGameStore.getState>,
   ) {
-    // Clear old
     for (const z of this.placementSlotZones) z.destroy();
     this.placementSlotZones = [];
 
     if (!store.placingModel) return;
 
-    // Find occupied slots
     const occupied = new Set<number>();
     for (const device of Object.values(state.devices)) {
       for (let u = device.slotU; u < device.slotU + device.uHeight; u++) {
@@ -864,14 +1334,12 @@ export class RackScene extends Phaser.Scene {
       }
     }
 
-    // Show placement highlights for empty slots
     for (let u = 1; u <= RACK.TOTAL_U; u++) {
       if (occupied.has(u)) continue;
 
       const x = this.deviceX();
       const y = this.slotY(u) + 1;
 
-      // Valid slot highlight
       const highlight = this.add
         .image(x, y, "slot-valid")
         .setOrigin(0, 0)
@@ -879,7 +1347,6 @@ export class RackScene extends Phaser.Scene {
       this.slotLayer.add(highlight);
       this.slotHighlights.push(highlight);
 
-      // Placement hit zone
       const zone = this.add
         .zone(x, y, RACK.INNER_WIDTH - 4, RACK.SLOT_HEIGHT - 2)
         .setOrigin(0, 0)
