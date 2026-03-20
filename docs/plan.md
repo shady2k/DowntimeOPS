@@ -88,10 +88,10 @@ Get the full gameplay loop working, ugly but functional: **build → traffic flo
 
 ### Tests
 - [x] Connection engine: path resolution, utilization aggregation
-- [ ] Failure generator: port failure affects connections
+- [x] Failure generator: port failure affects connections
 - [x] Tracer: hop-by-hop decisions match expected routing
 - [x] Economy: revenue/cost calculations
-- [ ] JSON-RPC: round-trip request/response validation
+- [x] JSON-RPC: round-trip request/response validation
 - [ ] E2E: place device, cable ports, see connection flow (Playwright)
 
 ### Phase 1 Done When
