@@ -276,6 +276,12 @@ export function updateConnectionHealth(state: GameState): GameState {
         break;
       }
 
+      const ingressPort = device.ports[hop.ingressPortIndex];
+      if (ingressPort && ingressPort.status !== "up") {
+        broken = true;
+        break;
+      }
+
       const egressPort = device.ports[hop.egressPortIndex];
       if (egressPort && egressPort.status !== "up") {
         broken = true;
