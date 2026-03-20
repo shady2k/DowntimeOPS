@@ -182,16 +182,16 @@ Make the network state visible and legible without opening debug panels.
 ### Sprint 2.5 — UI Restructure and Onboarding
 Support the tactile rack loop with a clearer surrounding interface.
 
-- [ ] Add a persistent objective/tutorial panel in React
-- [ ] Add a tutorial overlay/callout system that can spotlight UI and rack interactions
-- [ ] Rework the right panel default state to show objectives, starter contract, and current blockers
-- [ ] Rework the client panel to explain prospect urgency, contract value, and activation state
-- [ ] Rework the top bar to prioritize net cashflow, reputation impact, and current incident status
-- [ ] Add a scrolling event log or expandable operations feed for readable incident history
-- [ ] Rework alert bar copy to use player-facing language instead of debug/system phrasing
-- [ ] Add a first-revenue celebration moment: alert, animation, and obvious state change
-- [ ] Add save/load UI backed by existing storage
-- [ ] Add autosave and visible save-state feedback
+- [x] Add a persistent objective/tutorial panel in React
+- [x] Add a tutorial overlay/callout system that can spotlight UI and rack interactions
+- [x] Rework the right panel default state to show objectives, starter contract, and current blockers
+- [x] Rework the client panel to explain prospect urgency, contract value, and activation state
+- [x] Rework the top bar to prioritize net cashflow, reputation impact, and current incident status
+- [x] Add a scrolling event log or expandable operations feed for readable incident history
+- [x] Rework alert bar copy to use player-facing language instead of debug/system phrasing
+- [x] Add a first-revenue celebration moment: alert, animation, and obvious state change
+- [x] Add save/load UI backed by existing storage
+- [x] Add autosave and visible save-state feedback
 
 ### Sprint 2.6 — Progression, Milestones, and Pressure
 Create reasons to keep building after the first solved network.

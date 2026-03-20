@@ -1,11 +1,68 @@
 import { useGameStore } from "../../store/gameStore";
 
 export function ObjectivePanel() {
-  const tutorial = useGameStore((s) => s.state?.tutorial);
+  const state = useGameStore((s) => s.state);
+  const tutorial = state?.tutorial;
 
-  if (!tutorial || tutorial.tutorialComplete) return null;
+  // Always show — even after tutorial complete, show as a compact status bar
+  if (!tutorial) return null;
+
+  // Post-tutorial: compact status
+  if (tutorial.tutorialComplete) {
+    const activeClients = Object.values(state!.clients).filter(
+      (c) => c.status === "active" || c.status === "warning",
+    ).length;
+    const incidents = state!.alerts.filter(
+      (a) => !a.acknowledged && a.severity === "critical",
+    ).length;
+
+    return (
+      <div
+        style={{
+          padding: "8px 16px",
+          background: "#1a1a2e",
+          borderBottom: "1px solid #333",
+          display: "flex",
+          gap: 12,
+          fontSize: 10,
+          color: "#666",
+          fontFamily: "monospace",
+        }}
+      >
+        <span style={{ color: "#2ecc71" }}>
+          {activeClients} client{activeClients !== 1 ? "s" : ""} active
+        </span>
+        {incidents > 0 && (
+          <span style={{ color: "#e74c3c" }}>
+            {incidents} incident{incidents !== 1 ? "s" : ""}
+          </span>
+        )}
+        <span>
+          Network: {tutorial.networkReady ? "OK" : "DEGRADED"}
+        </span>
+      </div>
+    );
+  }
 
   const currentObj = tutorial.objectives[tutorial.currentObjectiveIndex];
+
+  // Find current blockers
+  const blockers: string[] = [];
+  if (!tutorial.networkReady) {
+    const devices = Object.values(state!.devices);
+    if (!devices.some((d) => d.type === "router"))
+      blockers.push("Need a router");
+    else if (!devices.some((d) => d.type === "switch"))
+      blockers.push("Need a switch");
+    else if (!devices.some((d) => d.type === "server"))
+      blockers.push("Need a server");
+    else blockers.push("Cable your devices together");
+  }
+
+  const prospects = Object.values(state!.clients).filter(
+    (c) => c.status === "prospect",
+  );
+  const starterProspect = prospects.find((c) => c.id === "client-starter");
 
   return (
     <div
@@ -13,6 +70,7 @@ export function ObjectivePanel() {
         padding: "12px 16px",
         background: "#1a1a2e",
         borderBottom: "1px solid #333",
+        fontFamily: "monospace",
       }}
     >
       {/* Header */}
@@ -23,33 +81,79 @@ export function ObjectivePanel() {
           textTransform: "uppercase",
           letterSpacing: 1,
           marginBottom: 8,
+          display: "flex",
+          alignItems: "center",
+          gap: 8,
         }}
       >
-        Getting Started
+        <span>Getting Started</span>
+        <span style={{ fontSize: 9, color: "#444" }}>
+          {tutorial.objectives.filter((o) => o.completed).length}/
+          {tutorial.objectives.length}
+        </span>
       </div>
 
-      {/* Current objective - highlighted */}
+      {/* Current objective — highlighted */}
       {currentObj && (
         <div
           style={{
             padding: "8px 12px",
-            background: "#2c3e50",
+            background: "#1a2a3a",
             borderLeft: "3px solid #3498db",
             borderRadius: 3,
-            marginBottom: 12,
+            marginBottom: 10,
           }}
         >
-          <div style={{ fontSize: 13, fontWeight: "bold", color: "#ecf0f1" }}>
+          <div
+            style={{ fontSize: 12, fontWeight: "bold", color: "#ecf0f1" }}
+          >
             {currentObj.title}
           </div>
-          <div style={{ fontSize: 11, color: "#999", marginTop: 2 }}>
+          <div style={{ fontSize: 10, color: "#8899aa", marginTop: 3, lineHeight: 1.4 }}>
             {currentObj.description}
           </div>
         </div>
       )}
 
+      {/* Blockers */}
+      {blockers.length > 0 && (
+        <div
+          style={{
+            padding: "6px 10px",
+            background: "#2a1a1a",
+            borderLeft: "3px solid #e67e22",
+            borderRadius: 3,
+            marginBottom: 10,
+            fontSize: 10,
+            color: "#e67e22",
+            lineHeight: 1.4,
+          }}
+        >
+          {blockers[0]}
+        </div>
+      )}
+
+      {/* Starter contract callout */}
+      {starterProspect && tutorial.networkReady && (
+        <div
+          style={{
+            padding: "6px 10px",
+            background: "#1a2a1a",
+            borderLeft: "3px solid #2ecc71",
+            borderRadius: 3,
+            marginBottom: 10,
+            fontSize: 10,
+            color: "#2ecc71",
+            lineHeight: 1.4,
+          }}
+        >
+          Your first client <strong>{starterProspect.name}</strong> is waiting!
+          Go to the Clients tab to accept their contract.
+        </div>
+      )}
+
       {/* Progress checklist */}
-      <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+      <div style={{ display: "flex", flexDirection: "column", gap: 3 }}>
         {tutorial.objectives.map((obj, i) => (
           <div
             key={obj.id}
@@ -57,15 +161,15 @@ export function ObjectivePanel() {
               display: "flex",
               alignItems: "center",
               gap: 8,
-              fontSize: 11,
+              fontSize: 10,
               color: obj.completed
                 ? "#2ecc71"
                 : i === tutorial.currentObjectiveIndex
                   ? "#ecf0f1"
-                  : "#555",
+                  : "#444",
             }}
           >
-            <span style={{ fontSize: 12, width: 16, textAlign: "center" }}>
+            <span style={{ fontSize: 11, width: 14, textAlign: "center" }}>
               {obj.completed
                 ? "\u2713"
                 : i === tutorial.currentObjectiveIndex
@@ -75,7 +179,7 @@ export function ObjectivePanel() {
             <span
               style={{
                 textDecoration: obj.completed ? "line-through" : "none",
-                opacity: obj.completed ? 0.6 : 1,
+                opacity: obj.completed ? 0.5 : 1,
               }}
             >
               {obj.title}
@@ -84,17 +188,29 @@ export function ObjectivePanel() {
         ))}
       </div>
 
-      {/* Network readiness indicator */}
+      {/* Network readiness */}
       <div
         style={{
-          marginTop: 12,
-          padding: "6px 10px",
-          background: tutorial.networkReady ? "#1a3a2a" : "#2a1a1a",
+          marginTop: 10,
+          padding: "4px 10px",
+          background: tutorial.networkReady ? "#1a2a1a" : "#2a1a1a",
           borderRadius: 3,
-          fontSize: 11,
+          fontSize: 10,
           color: tutorial.networkReady ? "#2ecc71" : "#e74c3c",
+          display: "flex",
+          alignItems: "center",
+          gap: 6,
         }}
       >
+        <span
+          style={{
+            width: 6,
+            height: 6,
+            borderRadius: "50%",
+            background: tutorial.networkReady ? "#2ecc71" : "#e74c3c",
+            display: "inline-block",
+          }}
+        />
         Network: {tutorial.networkReady ? "READY" : "NOT READY"}
       </div>
     </div>

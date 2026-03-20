@@ -11,9 +11,21 @@ import { CablePanel } from "./ui/panels/CablePanel";
 import { ClientPanel } from "./ui/panels/ClientPanel";
 import { TracerPanel } from "./ui/panels/TracerPanel";
 import { ConnectionInspector } from "./ui/panels/ConnectionInspector";
+import { EventLog } from "./ui/panels/EventLog";
+import { SaveLoadPanel } from "./ui/panels/SaveLoadPanel";
 import { ObjectivePanel } from "./ui/objectives/ObjectivePanel";
+import { TutorialOverlay } from "./ui/overlays/TutorialOverlay";
+import { CelebrationOverlay } from "./ui/overlays/CelebrationOverlay";
 
-type SideTab = "shop" | "device" | "cable" | "clients" | "tracer" | "connections";
+type SideTab =
+  | "shop"
+  | "device"
+  | "cable"
+  | "clients"
+  | "tracer"
+  | "connections"
+  | "log"
+  | "save";
 
 function App() {
   const connected = useGameStore((s) => s.connected);
@@ -21,6 +33,7 @@ function App() {
   const selectedDeviceId = useGameStore((s) => s.selectedDeviceId);
   const cablingFrom = useGameStore((s) => s.cablingFrom);
   const placingModel = useGameStore((s) => s.placingModel);
+  const tutorial = useGameStore((s) => s.state?.tutorial);
   const [sideTab, setSideTab] = useState<SideTab>("shop");
 
   useEffect(() => {
@@ -55,16 +68,44 @@ function App() {
       >
         <div style={{ textAlign: "center" }}>
           <h1>DowntimeOPS</h1>
-          <p>{connected ? "Loading game state..." : "Connecting to server..."}</p>
+          <p>
+            {connected ? "Loading game state..." : "Connecting to server..."}
+          </p>
         </div>
       </div>
     );
   }
 
+  // Tab definitions — show fewer tabs during tutorial
+  const isTutorial = tutorial && !tutorial.tutorialComplete;
+  const tabs: Array<[SideTab, string]> = isTutorial
+    ? [
+        ["shop", "Shop"],
+        ["device", "Device"],
+        ["cable", "Cable"],
+        ["clients", "Clients"],
+      ]
+    : [
+        ["shop", "Shop"],
+        ["device", "Device"],
+        ["cable", "Cable"],
+        ["clients", "Clients"],
+        ["connections", "Conns"],
+        ["tracer", "Tracer"],
+        ["log", "Log"],
+        ["save", "Save"],
+      ];
+
   return (
     <Layout
       topBar={<TopBar />}
-      canvas={<PhaserGame />}
+      canvas={
+        <div style={{ position: "relative", width: "100%", height: "100%" }}>
+          <PhaserGame />
+          <TutorialOverlay />
+          <CelebrationOverlay />
+        </div>
+      }
       sidePanel={
         <>
           <ObjectivePanel />
@@ -75,16 +116,7 @@ function App() {
               fontSize: 10,
             }}
           >
-            {(
-              [
-                ["shop", "Shop"],
-                ["device", "Device"],
-                ["cable", "Cable"],
-                ["clients", "Clients"],
-                ["connections", "Conns"],
-                ["tracer", "Tracer"],
-              ] as [SideTab, string][]
-            ).map(([tab, label]) => (
+            {tabs.map(([tab, label]) => (
               <button
                 key={tab}
                 onClick={() => setSideTab(tab)}
@@ -95,22 +127,34 @@ function App() {
                   color: sideTab === tab ? "#ecf0f1" : "#666",
                   border: "none",
                   borderBottom:
-                    sideTab === tab ? "2px solid #3498db" : "2px solid transparent",
+                    sideTab === tab
+                      ? "2px solid #3498db"
+                      : "2px solid transparent",
                   cursor: "pointer",
                   fontSize: 10,
+                  fontFamily: "monospace",
                 }}
               >
                 {label}
               </button>
             ))}
           </div>
-          <div style={{ overflow: "auto", flex: 1 }}>
+          <div
+            style={{
+              overflow: "auto",
+              flex: 1,
+              display: "flex",
+              flexDirection: "column",
+            }}
+          >
             {sideTab === "shop" && <EquipmentShop />}
             {sideTab === "device" && <DevicePanel />}
             {sideTab === "cable" && <CablePanel />}
             {sideTab === "clients" && <ClientPanel />}
             {sideTab === "connections" && <ConnectionInspector />}
             {sideTab === "tracer" && <TracerPanel />}
+            {sideTab === "log" && <EventLog />}
+            {sideTab === "save" && <SaveLoadPanel />}
           </div>
         </>
       }
