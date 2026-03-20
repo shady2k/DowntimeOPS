@@ -26,25 +26,28 @@ export class UIScene extends Phaser.Scene {
     const { width, height } = this.cameras.main;
 
     // --- Top HUD bar ---
-    const hudBg = this.add.rectangle(width / 2, 20, width, 40, 0x1e1814, 0.85);
+    this.add.rectangle(width / 2, 20, width, 40, 0x1e1814, 0.85);
 
-    this.moneyText = this.add.text(20, 10, "$0", {
-      fontSize: "18px",
+    this.moneyText = this.add.text(10, 6, "$0", {
+      fontSize: "12px",
+      fontFamily: "monospace",
       color: "#60c070",
       fontStyle: "bold",
     });
 
-    this.roomText = this.add.text(width / 2, 10, "Outside", {
-      fontSize: "16px",
+    this.roomText = this.add.text(width / 2, 6, "Outside", {
+      fontSize: "12px",
+      fontFamily: "monospace",
       color: "#f0e0cc",
     }).setOrigin(0.5, 0);
 
     // --- Objective panel (bottom-left) ---
-    this.objectiveText = this.add.text(20, height - 50, "", {
-      fontSize: "13px",
+    this.objectiveText = this.add.text(10, height - 30, "", {
+      fontSize: "10px",
+      fontFamily: "monospace",
       color: "#d4a040",
       backgroundColor: "#1e1814cc",
-      padding: { x: 8, y: 4 },
+      padding: { x: 4, y: 2 },
       wordWrap: { width: 300 },
     });
 
@@ -53,8 +56,9 @@ export class UIScene extends Phaser.Scene {
     this.shopPanel.setVisible(false);
 
     // Controls hint
-    this.add.text(width - 200, height - 30, "WASD: Move  |  E: Interact", {
-      fontSize: "11px",
+    this.add.text(width - 180, height - 16, "WASD: Move  |  E: Interact", {
+      fontSize: "8px",
+      fontFamily: "monospace",
       color: "#706050",
     });
 
@@ -75,13 +79,6 @@ export class UIScene extends Phaser.Scene {
     // Initial update
     this.updateHUD(useGameStore.getState());
 
-    // Handle resize
-    this.scale.on("resize", (size: Phaser.Structs.Size) => {
-      hudBg.setPosition(size.width / 2, 20);
-      hudBg.setSize(size.width, 40);
-      this.roomText.setX(size.width / 2);
-      this.objectiveText.setY(size.height - 50);
-    });
   }
 
   private updateHUD(store: GameStore) {

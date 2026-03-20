@@ -43,7 +43,7 @@ export class WorldScene extends Phaser.Scene {
   // Interaction
   private nearestInteractable: string | null = null;
   private promptText!: Phaser.GameObjects.Text;
-  private carriedItemSprite: Phaser.GameObjects.Rectangle | null = null;
+  private carriedItemSprite: Phaser.GameObjects.GameObject | null = null;
 
   // Sync throttle
   private lastSyncTime = 0;
@@ -115,89 +115,154 @@ export class WorldScene extends Phaser.Scene {
   }
 
   /**
-   * Draw a simple colored tilemap. Placeholder until real tilesets exist.
+   * Build the visual world using existing art assets.
+   * room-datacenter.png (1200x900) is placed as the datacenter background.
+   * Other rooms use warm procedural graphics matching the art palette.
    */
   private buildTilemap() {
     const g = this.add.graphics().setDepth(0);
 
-    // Background (void)
-    g.fillStyle(0x0a0806);
+    // Background void
+    g.fillStyle(0x0d0a07);
     g.fillRect(0, 0, WORLD.width * TILE, WORLD.height * TILE);
 
-    // Exterior ground
+    // --- Exterior ---
     const ext = ROOMS.exterior;
-    g.fillStyle(0x3a3a30);
+    // Night sky
+    g.fillStyle(0x0d0d1a);
     g.fillRect(ext.x * TILE, ext.y * TILE, ext.w * TILE, ext.h * TILE);
+    // Ground/sidewalk
+    g.fillStyle(0x3a3028);
+    g.fillRect(ext.x * TILE, 8 * TILE, ext.w * TILE, 4 * TILE);
+    // Road
+    g.fillStyle(0x2a2822);
+    g.fillRect(14 * TILE, 8 * TILE, 12 * TILE, 4 * TILE);
+    // Road markings
+    g.fillStyle(0x6a6040);
+    for (let x = 15; x < 25; x += 3) {
+      g.fillRect(x * TILE, 10 * TILE, TILE, 4);
+    }
 
-    // Exterior details — road/path
-    g.fillStyle(0x484840);
-    g.fillRect(16 * TILE, ext.y * TILE, 8 * TILE, ext.h * TILE);
+    // Building facade — warm brick wall
+    g.fillStyle(0x5a3a28);
+    g.fillRect(8 * TILE, 4 * TILE, 48 * TILE, 8 * TILE);
+    // Brick texture lines
+    g.lineStyle(1, 0x4a2a18, 0.4);
+    for (let row = 0; row < 8; row++) {
+      const y = (4 + row) * TILE;
+      g.moveTo(8 * TILE, y).lineTo(56 * TILE, y);
+      const offset = row % 2 === 0 ? 0 : TILE;
+      for (let x = 8; x < 56; x += 2) {
+        g.moveTo((x + (offset ? 1 : 0)) * TILE, y).lineTo((x + (offset ? 1 : 0)) * TILE, y + TILE);
+      }
+    }
+    // Building sign
+    g.fillStyle(0x1e1814);
+    g.fillRect(16 * TILE, 5 * TILE, 8 * TILE, 2 * TILE);
+    this.add.text(17 * TILE, 5.3 * TILE, "DowntimeOPS", {
+      fontSize: "12px",
+      fontFamily: "monospace",
+      color: "#e8a840",
+      fontStyle: "bold",
+    }).setDepth(5);
 
-    // Building facade (wall above lobby and datacenter)
-    g.fillStyle(0x5a4a3a);
-    g.fillRect(8 * TILE, 12 * TILE, 48 * TILE, 2 * TILE);
-
-    // Door opening in facade
-    g.fillStyle(0x2a2218);
+    // Door in facade — warm glow
     const d1 = DOORS.exteriorToLobby;
-    g.fillRect(d1.x * TILE, d1.y * TILE, d1.w * TILE, d1.h * TILE);
+    g.fillStyle(0x4a3020);
+    g.fillRect(d1.x * TILE, (d1.y - 4) * TILE, d1.w * TILE, 6 * TILE);
+    // Door light glow
+    g.fillStyle(0xe8a840);
+    g.fillRect(d1.x * TILE + 8, (d1.y - 4) * TILE + 4, d1.w * TILE - 16, 4);
 
-    // Lobby floor
+    // Lamp posts with warm glow
+    for (const lx of [10, 30, 50]) {
+      g.fillStyle(0x504030);
+      g.fillRect(lx * TILE - 2, 5 * TILE, 4, 5 * TILE);
+      // Warm glow circle
+      g.fillStyle(0xe8a840);
+      g.fillCircle(lx * TILE, 5 * TILE, 8);
+      g.fillStyle(0xe8a840);
+      g.fillCircle(lx * TILE, 5 * TILE, 4);
+    }
+
+    // --- Lobby / Shop ---
     const lob = ROOMS.lobby;
-    g.fillStyle(0x3a2e22);
+    // Warm wooden floor
+    g.fillStyle(0x3a2a1e);
     g.fillRect(lob.x * TILE, lob.y * TILE, lob.w * TILE, lob.h * TILE);
-
-    // Lobby: draw tile grid
-    g.lineStyle(1, 0x4a3e32, 0.3);
-    for (let tx = lob.x; tx < lob.x + lob.w; tx++) {
-      for (let ty = lob.y; ty < lob.y + lob.h; ty++) {
-        g.strokeRect(tx * TILE, ty * TILE, TILE, TILE);
-      }
+    // Floor planks
+    g.lineStyle(1, 0x2e2018, 0.5);
+    for (let ty = lob.y; ty < lob.y + lob.h; ty += 2) {
+      g.moveTo(lob.x * TILE, ty * TILE).lineTo((lob.x + lob.w) * TILE, ty * TILE);
     }
 
-    // Shop counter area
-    g.fillStyle(0x6a5540);
+    // Shop counter — wooden counter with warm glow
+    g.fillStyle(0x6a4a30);
     g.fillRect((lob.x + 3) * TILE, (lob.y + 5) * TILE, 8 * TILE, 2 * TILE);
-
-    // Shop sign text
+    g.fillStyle(0x8a6a48);
+    g.fillRect((lob.x + 3) * TILE, (lob.y + 5) * TILE, 8 * TILE, 4);
+    // Shop sign
     this.add.text(
-      (lob.x + 5) * TILE, (lob.y + 2) * TILE,
+      (lob.x + 4) * TILE, (lob.y + 2) * TILE,
       "EQUIPMENT SHOP",
-      { fontSize: "16px", color: "#e8a840", fontStyle: "bold" },
+      { fontSize: "12px", fontFamily: "monospace", color: "#e8a840", fontStyle: "bold" },
     ).setDepth(5);
 
-    // Door between lobby and DC
+    // Shelves on wall
+    g.fillStyle(0x5a4030);
+    g.fillRect((lob.x + 1) * TILE, (lob.y + 1) * TILE, 6 * TILE, TILE);
+    g.fillRect((lob.x + 1) * TILE, (lob.y + 3) * TILE, 4 * TILE, TILE / 2);
+    // Items on shelves (small colored boxes)
+    g.fillStyle(0x3a6a40);
+    g.fillRect((lob.x + 1.5) * TILE, (lob.y + 0.5) * TILE, 12, 12);
+    g.fillStyle(0x3a6a8a);
+    g.fillRect((lob.x + 3) * TILE, (lob.y + 0.5) * TILE, 12, 12);
+    g.fillStyle(0x9a6a2a);
+    g.fillRect((lob.x + 4.5) * TILE, (lob.y + 0.5) * TILE, 12, 12);
+
+    // Ambient props: boxes, cart, cable spool
+    g.fillStyle(0x6a5540);
+    g.fillRect((lob.x + 14) * TILE, (lob.y + 16) * TILE, 2 * TILE, 2 * TILE);
+    g.fillStyle(0x5a4530);
+    g.fillRect((lob.x + 16) * TILE, (lob.y + 17) * TILE, TILE, TILE);
+    // Cable spool
+    g.fillStyle(0x504030);
+    g.fillCircle((lob.x + 2) * TILE, (lob.y + 20) * TILE, 14);
+    g.fillStyle(0x3a6a8a);
+    g.fillCircle((lob.x + 2) * TILE, (lob.y + 20) * TILE, 8);
+
+    // Door to DC
     const d2 = DOORS.lobbyToDc;
-    g.fillStyle(0x2a2218);
+    g.fillStyle(0x4a3020);
     g.fillRect(d2.x * TILE, d2.y * TILE, d2.w * TILE, d2.h * TILE);
+    // Door frame glow
+    g.fillStyle(0x60c070);
+    g.fillRect(d2.x * TILE + 4, d2.y * TILE + 4, d2.w * TILE - 8, 3);
 
-    // Datacenter floor
+    // --- Datacenter room — use the art asset! ---
     const dc = ROOMS.datacenter;
-    g.fillStyle(0x2a2a28);
-    g.fillRect(dc.x * TILE, dc.y * TILE, dc.w * TILE, dc.h * TILE);
-
-    // Datacenter: draw tile grid (raised floor look)
-    g.lineStyle(1, 0x3a3a38, 0.3);
-    for (let tx = dc.x; tx < dc.x + dc.w; tx++) {
-      for (let ty = dc.y; ty < dc.y + dc.h; ty++) {
-        g.strokeRect(tx * TILE, ty * TILE, TILE, TILE);
-      }
+    // Place the room-datacenter.png as the background for this room
+    if (this.textures.exists("room-bg")) {
+      const bg = this.add.image(
+        dc.x * TILE + (dc.w * TILE) / 2,
+        dc.y * TILE + (dc.h * TILE) / 2,
+        "room-bg",
+      ).setDepth(0);
+      // Scale to fill the datacenter room area
+      bg.setDisplaySize(dc.w * TILE, dc.h * TILE);
+    } else {
+      // Fallback: dark raised floor
+      g.fillStyle(0x1e1e20);
+      g.fillRect(dc.x * TILE, dc.y * TILE, dc.w * TILE, dc.h * TILE);
     }
 
-    // Datacenter label
-    this.add.text(
-      (dc.x + 8) * TILE, (dc.y + 1) * TILE,
-      "DATACENTER",
-      { fontSize: "18px", color: "#708090", fontStyle: "bold" },
-    ).setDepth(5);
-
-    // Wall between lobby and DC
-    g.fillStyle(0x5a4a3a);
+    // --- Walls (drawn on top) ---
+    // Warm brick walls matching the art style
+    g.fillStyle(0x5a3a28);
+    // Wall between lobby and DC (above door)
     g.fillRect(28 * TILE, 14 * TILE, 2 * TILE, 10 * TILE);
+    // Wall between lobby and DC (below door)
     g.fillRect(28 * TILE, 26 * TILE, 2 * TILE, 12 * TILE);
-
-    // Outer walls
-    g.fillStyle(0x5a4a3a);
     // Left wall
     g.fillRect((lob.x - 1) * TILE, 14 * TILE, TILE, lob.h * TILE);
     // Right wall
@@ -207,16 +272,6 @@ export class WorldScene extends Phaser.Scene {
     // Top wall (except door)
     g.fillRect(8 * TILE, 13 * TILE, 10 * TILE, TILE);
     g.fillRect(20 * TILE, 13 * TILE, 36 * TILE, TILE);
-
-    // Ambient props — boxes in lobby
-    g.fillStyle(0x7a6a55);
-    g.fillRect((lob.x + 14) * TILE, (lob.y + 16) * TILE, 2 * TILE, 2 * TILE);
-    g.fillRect((lob.x + 16) * TILE, (lob.y + 17) * TILE, TILE, TILE);
-
-    // Exterior props — lamp posts
-    g.fillStyle(0xd4a040);
-    g.fillCircle(10 * TILE, 4 * TILE, 6);
-    g.fillCircle(30 * TILE, 4 * TILE, 6);
   }
 
   /**
@@ -428,22 +483,38 @@ export class WorldScene extends Phaser.Scene {
     const container = this.add.container(0, 0);
 
     if (item.kind === "rack") {
-      // Rack: tall dark rectangle
-      const body = this.add.rectangle(0, 0, 2.5 * TILE, 5 * TILE, 0x4a4240);
-      body.setStrokeStyle(2, 0x6a6058);
-      const label = this.add.text(0, -2.5 * TILE - 10, "RACK", {
-        fontSize: "10px",
-        color: "#a89070",
-      }).setOrigin(0.5);
-      container.add([body, label]);
+      // Use the real rack-frame sprite
+      if (this.textures.exists("rack-frame")) {
+        const sprite = this.add.image(0, 0, "rack-frame");
+        // Scale down for world view (original is 460x880, show ~3x2 tiles)
+        sprite.setDisplaySize(3 * TILE, 5.5 * TILE);
+        container.add(sprite);
+      } else {
+        const body = this.add.rectangle(0, 0, 3 * TILE, 5.5 * TILE, 0x4a4240);
+        body.setStrokeStyle(2, 0x6a6058);
+        container.add(body);
+      }
     } else if (item.kind === "device") {
-      // Device: small colored box
-      const color = item.model.includes("server") ? 0x3a6a40
-        : item.model.includes("switch") ? 0x3a6a8a
-        : 0x9a6a2a;
-      const body = this.add.rectangle(0, 0, 1.5 * TILE, TILE, color);
-      body.setStrokeStyle(1, 0xffffff, 0.3);
-      container.add([body]);
+      // Use real device sprites
+      const textureKey = item.model.includes("server") ? "device-server"
+        : item.model.includes("switch") ? "device-switch"
+        : item.model.includes("router") ? "device-router"
+        : item.model.includes("firewall") ? "device-firewall"
+        : null;
+
+      if (textureKey && this.textures.exists(textureKey)) {
+        const sprite = this.add.image(0, 0, textureKey);
+        // Scale for world view (original 420x18, show as a small carried box)
+        sprite.setDisplaySize(2 * TILE, TILE);
+        container.add(sprite);
+      } else {
+        const color = item.model.includes("server") ? 0x3a6a40
+          : item.model.includes("switch") ? 0x3a6a8a
+          : 0x9a6a2a;
+        const body = this.add.rectangle(0, 0, 2 * TILE, TILE, color);
+        body.setStrokeStyle(1, 0xffffff, 0.3);
+        container.add(body);
+      }
     }
 
     return container;
@@ -464,19 +535,37 @@ export class WorldScene extends Phaser.Scene {
     if (!item) return;
 
     if (!this.carriedItemSprite) {
-      const color = item.kind === "rack" ? 0x4a4240
-        : item.model?.includes("server") ? 0x3a6a40
-        : item.model?.includes("switch") ? 0x3a6a8a
-        : 0x9a6a2a;
+      // Try to use real sprite
+      if (item.kind === "rack" && this.textures.exists("rack-frame")) {
+        const img = this.add.image(0, 0, "rack-frame");
+        img.setDisplaySize(2 * TILE, 3.5 * TILE);
+        img.setAlpha(0.9);
+        img.setDepth(49);
+        this.carriedItemSprite = img;
+      } else {
+        const textureKey = item.model.includes("server") ? "device-server"
+          : item.model.includes("switch") ? "device-switch"
+          : item.model.includes("router") ? "device-router"
+          : null;
 
-      const size = item.kind === "rack" ? { w: 2 * TILE, h: 3 * TILE } : { w: 1.5 * TILE, h: TILE };
-      this.carriedItemSprite = this.add.rectangle(0, 0, size.w, size.h, color, 0.8);
-      this.carriedItemSprite.setStrokeStyle(2, 0xe8a840);
-      this.carriedItemSprite.setDepth(49);
+        if (textureKey && this.textures.exists(textureKey)) {
+          const img = this.add.image(0, 0, textureKey);
+          img.setDisplaySize(2 * TILE, TILE);
+          img.setAlpha(0.9);
+          img.setDepth(49);
+          this.carriedItemSprite = img;
+        } else {
+          const rect = this.add.rectangle(0, 0, 2 * TILE, TILE, 0x4a4240, 0.8);
+          rect.setStrokeStyle(2, 0xe8a840);
+          rect.setDepth(49);
+          this.carriedItemSprite = rect;
+        }
+      }
     }
 
     // Float above player
-    this.carriedItemSprite.setPosition(
+    const sprite = this.carriedItemSprite as Phaser.GameObjects.Image;
+    sprite.setPosition(
       this.player.x,
       this.player.y - 28,
     );
@@ -498,7 +587,8 @@ export class WorldScene extends Phaser.Scene {
 
     // Update carried item position
     if (this.carriedItemSprite) {
-      this.carriedItemSprite.setPosition(
+      const sprite = this.carriedItemSprite as Phaser.GameObjects.Image;
+      sprite.setPosition(
         this.player.x,
         this.player.y - 28,
       );
