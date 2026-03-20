@@ -16,8 +16,15 @@ import { rpcClient } from "../../rpc/client";
 const GAME_W = 960;
 const GAME_H = 540;
 
-/** Player floor Y — where the character walks (percentage from top) */
-const FLOOR_Y = GAME_H * 0.82;
+/** Per-room floor Y — where the character walks */
+/** Per-room floor Y and player scale */
+const ROOM_CONFIG: Record<string, { floorY: number; playerScale: number }> = {
+  exterior: { floorY: GAME_H * 0.88, playerScale: 90 },
+  lobby: { floorY: GAME_H * 0.92, playerScale: 140 },
+  datacenter: { floorY: GAME_H * 0.85, playerScale: 100 },
+};
+const DEFAULT_FLOOR_Y = GAME_H * 0.85;
+const DEFAULT_PLAYER_SCALE = 90;
 
 const PLAYER_SPEED = 200;
 
@@ -51,19 +58,8 @@ const ROOM_CONNECTIONS: Record<string, {
   },
 };
 
-/** Placement zone visual positions within datacenter room (in screen coords) */
-const DC_RACK_SLOTS = [
-  { id: "rack-slot-0", x: GAME_W * 0.25, y: FLOOR_Y - 60 },
-  { id: "rack-slot-1", x: GAME_W * 0.40, y: FLOOR_Y - 60 },
-  { id: "rack-slot-2", x: GAME_W * 0.55, y: FLOOR_Y - 60 },
-  { id: "rack-slot-3", x: GAME_W * 0.70, y: FLOOR_Y - 60 },
-  { id: "rack-slot-4", x: GAME_W * 0.85, y: FLOOR_Y - 60 },
-  { id: "rack-slot-5", x: GAME_W * 0.30, y: FLOOR_Y - 160 },
-];
-
-/** Shop counter position in lobby */
+/** Shop counter X position in lobby */
 const SHOP_COUNTER_X = GAME_W * 0.5;
-const SHOP_COUNTER_Y = FLOOR_Y - 20;
 
 export class WorldScene extends Phaser.Scene {
   // Current room
@@ -147,13 +143,30 @@ export class WorldScene extends Phaser.Scene {
     if (state?.world) {
       this.currentRoom = state.world.player.roomId;
       this.enterRoom(this.currentRoom, state.world);
-      this.player.setPosition(GAME_W / 2, FLOOR_Y);
+      this.player.setPosition(GAME_W / 2, this.getFloorY());
     }
 
     // Launch UI overlay
     if (!this.scene.isActive("UIScene")) {
       this.scene.launch("UIScene");
     }
+  }
+
+  private getFloorY(): number {
+    return ROOM_CONFIG[this.currentRoom]?.floorY ?? DEFAULT_FLOOR_Y;
+  }
+
+  private getPlayerScale(): number {
+    return ROOM_CONFIG[this.currentRoom]?.playerScale ?? DEFAULT_PLAYER_SCALE;
+  }
+
+  /** Apply the correct scale for the current room to the player sprite */
+  private applyPlayerScale() {
+    const ps = this.getPlayerScale();
+    const texKey = this.playerSprite.texture.key;
+    const frameW = texKey === "player-walk" ? 384 : 1024;
+    this.playerSprite.setScale(ps / frameW);
+    this.playerSprite.setOrigin(0.5, 0.85);
   }
 
   // --- Room management ---
@@ -179,6 +192,9 @@ export class WorldScene extends Phaser.Scene {
       this.bgSprite.setDisplaySize(GAME_W, GAME_H);
     }
 
+    // Rescale player for this room
+    this.applyPlayerScale();
+
     // Build room-specific elements
     this.buildRoomElements(roomId, world);
 
@@ -186,71 +202,36 @@ export class WorldScene extends Phaser.Scene {
     this.syncWorldItems(world);
   }
 
+  /** Get rack slot positions for the datacenter (computed from floor Y) */
+  private getDcRackSlots() {
+    const fy = ROOM_CONFIG.datacenter?.floorY ?? DEFAULT_FLOOR_Y;
+    return [
+      { id: "rack-slot-0", x: GAME_W * 0.25, y: fy - 60 },
+      { id: "rack-slot-1", x: GAME_W * 0.40, y: fy - 60 },
+      { id: "rack-slot-2", x: GAME_W * 0.55, y: fy - 60 },
+      { id: "rack-slot-3", x: GAME_W * 0.70, y: fy - 60 },
+      { id: "rack-slot-4", x: GAME_W * 0.85, y: fy - 60 },
+      { id: "rack-slot-5", x: GAME_W * 0.30, y: fy - 160 },
+    ];
+  }
+
   private buildRoomElements(roomId: RoomId, _world: WorldState) {
     const conn = ROOM_CONNECTIONS[roomId];
     if (!conn) return;
+    const fy = this.getFloorY();
 
-    // Door indicators
-    if (conn.doors) {
-      for (const door of conn.doors) {
-        // Door glow indicator
-        const glow = this.add.rectangle(door.x, FLOOR_Y - 40, 40, 80, 0xe8a840, 0.08)
-          .setDepth(5);
-        this.roomObjects.push(glow);
-
-        // Door label
-        const label = this.add.text(door.x, FLOOR_Y - 90, `[E] → ${door.targetRoom}`, {
-          fontSize: "11px",
-          fontFamily: "monospace",
-          color: "#e8a840",
-        }).setOrigin(0.5).setDepth(5).setAlpha(0.6);
-        this.roomObjects.push(label);
-      }
-    }
-
-    // Edge transition arrows
+    // Subtle edge arrows (no rectangles — just text hints)
     if (conn.left) {
-      const arrow = this.add.text(15, FLOOR_Y - 30, "◀", {
-        fontSize: "24px", color: "#e8a840",
-      }).setOrigin(0.5).setDepth(5).setAlpha(0.5);
+      const arrow = this.add.text(12, fy - 30, "◀ " + conn.left.room, {
+        fontSize: "11px", fontFamily: "monospace", color: "#e8a840",
+      }).setOrigin(0, 0.5).setDepth(5).setAlpha(0.4);
       this.roomObjects.push(arrow);
-      const hint = this.add.text(15, FLOOR_Y - 55, conn.left.room, {
-        fontSize: "10px", fontFamily: "monospace", color: "#e8a840",
-      }).setOrigin(0.5).setDepth(5).setAlpha(0.4);
-      this.roomObjects.push(hint);
     }
     if (conn.right) {
-      const arrow = this.add.text(GAME_W - 15, FLOOR_Y - 30, "▶", {
-        fontSize: "24px", color: "#e8a840",
-      }).setOrigin(0.5).setDepth(5).setAlpha(0.5);
+      const arrow = this.add.text(GAME_W - 12, fy - 30, conn.right.room + " ▶", {
+        fontSize: "11px", fontFamily: "monospace", color: "#e8a840",
+      }).setOrigin(1, 0.5).setDepth(5).setAlpha(0.4);
       this.roomObjects.push(arrow);
-      const hint = this.add.text(GAME_W - 15, FLOOR_Y - 55, conn.right.room, {
-        fontSize: "10px", fontFamily: "monospace", color: "#e8a840",
-      }).setOrigin(0.5).setDepth(5).setAlpha(0.4);
-      this.roomObjects.push(hint);
-    }
-
-    // Room-specific elements
-    if (roomId === "lobby") {
-      // Shop counter highlight
-      const counter = this.add.rectangle(
-        SHOP_COUNTER_X, SHOP_COUNTER_Y,
-        120, 10, 0xe8a840, 0.15,
-      ).setDepth(5);
-      this.roomObjects.push(counter);
-    }
-
-    if (roomId === "datacenter") {
-      // Placement zone indicators
-      for (const slot of DC_RACK_SLOTS) {
-        const rect = this.add.rectangle(
-          slot.x, slot.y,
-          60, 120, 0x60c070, 0.08,
-        ).setDepth(2);
-        rect.setStrokeStyle(1, 0x60c070, 0.2);
-        rect.setData("zoneId", slot.id);
-        this.roomObjects.push(rect);
-      }
     }
   }
 
@@ -296,7 +277,7 @@ export class WorldScene extends Phaser.Scene {
       this.playerSprite = this.add.sprite(0, 0, "player-fallback");
     }
 
-    this.player = this.add.container(GAME_W / 2, FLOOR_Y, [this.playerSprite]);
+    this.player = this.add.container(GAME_W / 2, this.getFloorY(), [this.playerSprite]);
     this.player.setSize(40, 80);
     this.player.setDepth(50);
 
@@ -333,13 +314,13 @@ export class WorldScene extends Phaser.Scene {
       // Map server position to screen position
       // For placed racks in datacenter, use rack slot positions
       if (item.state === "placed" && this.currentRoom === "datacenter") {
-        const slotIndex = DC_RACK_SLOTS.findIndex((s) => {
+        const slotIndex = this.getDcRackSlots().findIndex((s) => {
           const room = world.rooms[this.currentRoom];
           const zone = room?.placementZones[s.id];
           return zone?.occupiedByItemId === itemId;
         });
         if (slotIndex >= 0) {
-          const slot = DC_RACK_SLOTS[slotIndex];
+          const slot = this.getDcRackSlots()[slotIndex];
           container.setPosition(slot.x, slot.y);
         }
       }
@@ -457,7 +438,7 @@ export class WorldScene extends Phaser.Scene {
 
     this.playerBody.setVelocityX(vx);
     // Lock to floor
-    this.player.y = FLOOR_Y;
+    this.player.y = this.getFloorY();
     this.playerBody.setVelocityY(0);
 
     // Animation and facing
@@ -465,19 +446,24 @@ export class WorldScene extends Phaser.Scene {
       // Sprite faces right by default — flip when walking left
       this.playerSprite.setFlipX(vx < 0);
 
-      // Play walk animation if not already playing
+      // Switch to walk spritesheet and play animation
       if (this.anims.exists("walk")) {
+        if (this.playerSprite.texture.key !== "player-walk") {
+          this.playerSprite.setTexture("player-walk", 0);
+          this.applyPlayerScale();
+        }
         if (!this.playerSprite.anims.isPlaying || this.playerSprite.anims.currentAnim?.key !== "walk") {
           this.playerSprite.play("walk");
         }
       }
     } else {
-      // Stop animation and show idle frame (frame 0)
+      // Stop walk animation and show idle texture
       if (this.playerSprite.anims.isPlaying) {
         this.playerSprite.stop();
       }
-      if (this.textures.exists("player-walk")) {
-        this.playerSprite.setFrame(0);
+      if (this.textures.exists("player-idle") && this.playerSprite.texture.key !== "player-idle") {
+        this.playerSprite.setTexture("player-idle");
+        this.applyPlayerScale();
       }
     }
   }
@@ -511,7 +497,7 @@ export class WorldScene extends Phaser.Scene {
         this.enterRoom(targetRoom, newState.world);
         this.player.setPosition(
           enterFrom === "left" ? 60 : GAME_W - 60,
-          FLOOR_Y,
+          this.getFloorY(),
         );
       }
     });
@@ -550,7 +536,7 @@ export class WorldScene extends Phaser.Scene {
       const carriedItem = state.world.items[state.world.player.carryingItemId];
       if (carriedItem?.kind === "rack") {
         const room = state.world.rooms[this.currentRoom];
-        for (const slot of DC_RACK_SLOTS) {
+        for (const slot of this.getDcRackSlots()) {
           const zone = room?.placementZones[slot.id];
           if (zone?.occupiedByItemId) continue;
           if (Math.abs(px - slot.x) < 50) {
@@ -598,7 +584,7 @@ export class WorldScene extends Phaser.Scene {
         const newState = useGameStore.getState().state;
         if (newState?.world) {
           this.enterRoom(targetRoom, newState.world);
-          this.player.setPosition(GAME_W / 2, FLOOR_Y);
+          this.player.setPosition(GAME_W / 2, this.getFloorY());
         }
       });
       return;

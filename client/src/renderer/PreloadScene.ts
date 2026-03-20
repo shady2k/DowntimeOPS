@@ -42,6 +42,7 @@ export class PreloadScene extends Phaser.Scene {
       frameWidth: 384,
       frameHeight: 1024,
     });
+    this.load.image("player-idle", "assets/player/player-idle.png");
 
     // UI
     this.load.image("ui-panel-bg", "assets/ui/panel-bg.png");
