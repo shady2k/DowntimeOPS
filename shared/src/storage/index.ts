@@ -1,0 +1,2 @@
+// GameStorage interface
+export {};

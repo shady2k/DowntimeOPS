@@ -1,0 +1,31 @@
+{
+  "name": "downtime-ops",
+  "private": true,
+  "type": "module",
+  "workspaces": [
+    "shared",
+    "server",
+    "client"
+  ],
+  "scripts": {
+    "dev": "bun run --filter '*' dev",
+    "dev:server": "bun run --filter server dev",
+    "dev:client": "bun run --filter client dev",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "test:e2e": "bunx playwright test",
+    "lint": "eslint .",
+    "build:client": "bun run --filter client build",
+    "prepare": "husky"
+  },
+  "devDependencies": {
+    "typescript": "^5.7",
+    "eslint": "^9.0",
+    "@eslint/js": "^9.0",
+    "typescript-eslint": "^8.0",
+    "vitest": "^3.0",
+    "@playwright/test": "^1.50",
+    "husky": "^9.0",
+    "lint-staged": "^15.0"
+  }
+}
