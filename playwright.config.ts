@@ -6,7 +6,7 @@ export default defineConfig({
   forbidOnly: !!process.env.CI,
   retries: process.env.CI ? 2 : 0,
   use: {
-    baseURL: "http://localhost:5173",
+    baseURL: "http://localhost:5174",
   },
   projects: [
     {
@@ -22,7 +22,7 @@ export default defineConfig({
     },
     {
       command: "bun run dev:client",
-      port: 5173,
+      port: 5174,
       reuseExistingServer: !process.env.CI,
     },
   ],

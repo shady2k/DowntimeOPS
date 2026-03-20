@@ -122,33 +122,33 @@ Transform the vertical slice from a debug visualization into an actual game: tac
 ### Sprint 2.1 — First-Session Playability
 Establish the minimum viable fun loop so a new player knows what to do in 5 minutes.
 
-- [ ] Add server-driven objective system with explicit milestones: buy router, buy switch, buy server, connect devices, accept first client, survive first incident
-- [ ] Add objective/tutorial state to shared types, server state, and client sync
-- [ ] Script a first-session tutorial flow with step-by-step guidance instead of passive help text
-- [ ] Spawn a guaranteed starter client immediately on new game start
-- [ ] Gate random prospects until the starter contract is completed or expired
-- [ ] Gate random failures until the player has seen traffic flow at least once
-- [ ] Script the first failure to occur after the first successful client activation
-- [ ] Add server-side "network ready" checks: router present, server present, valid path to uplink, client-capable topology
-- [ ] Surface readiness state in the HUD and tutorial/objective panel
-- [ ] Rewrite empty-state messaging in panels to explain why revenue is zero and what the next action is
-- [ ] Add player-facing alert categories: tutorial, prospect, outage, capacity, SLA
-- [ ] Add visible monthly cashflow delta and runway hint in the HUD
+- [x] Add server-driven objective system with explicit milestones: buy router, buy switch, buy server, connect devices, accept first client, survive first incident
+- [x] Add objective/tutorial state to shared types, server state, and client sync
+- [x] Script a first-session tutorial flow with step-by-step guidance instead of passive help text
+- [x] Spawn a guaranteed starter client immediately on new game start
+- [x] Gate random prospects until the starter contract is completed or expired
+- [x] Gate random failures until the player has seen traffic flow at least once
+- [x] Script the first failure to occur after the first successful client activation
+- [x] Add server-side "network ready" checks: router present, server present, valid path to uplink, client-capable topology
+- [x] Surface readiness state in the HUD and tutorial/objective panel
+- [x] Rewrite empty-state messaging in panels to explain why revenue is zero and what the next action is
+- [x] Add player-facing alert categories: tutorial, prospect, outage, capacity, SLA
+- [x] Add visible monthly cashflow delta and runway hint in the HUD
 
 ### Sprint 2.2 — Layered 2D Rendering Foundation
 Replace placeholder debug graphics with a sprite-based layered rack scene.
 
-- [ ] Create a Phaser asset manifest/preload pipeline for rack art, device sprites, cable sprites, LEDs, and FX
-- [ ] Add a static painted datacenter room background layer behind the rack
-- [ ] Replace procedural rack frame drawing with rack shell art: rails, screw holes, depth shading, labels
-- [ ] Replace colored device rectangles with composed sprite-based device faceplates
-- [ ] Define device visual prefabs for server, switch, router, and future firewall/patch panel variants
-- [ ] Add device state overlays for selected, idle, active, degraded, and failed states
-- [ ] Convert port indicators into visible LED/port sprites with larger hidden hit areas
-- [ ] Add rack slot highlights and placement ghost sprites for valid/invalid U positions
-- [ ] Refactor the Phaser rack renderer into explicit layers: background, rack, devices, cables, effects, hit targets
-- [ ] Make the Phaser canvas responsive so the rack fills the main play area instead of a fixed debug-sized viewport
-- [ ] Add camera zoom and pan tuned for rack work while keeping all interactions readable
+- [x] Create a Phaser asset manifest/preload pipeline for rack art, device sprites, cable sprites, LEDs, and FX
+- [x] Add a static painted datacenter room background layer behind the rack
+- [x] Replace procedural rack frame drawing with rack shell art: rails, screw holes, depth shading, labels
+- [x] Replace colored device rectangles with composed sprite-based device faceplates
+- [x] Define device visual prefabs for server, switch, router, and future firewall/patch panel variants
+- [x] Add device state overlays for selected, idle, active, degraded, and failed states
+- [x] Convert port indicators into visible LED/port sprites with larger hidden hit areas
+- [x] Add rack slot highlights and placement ghost sprites for valid/invalid U positions
+- [x] Refactor the Phaser rack renderer into explicit layers: background, rack, devices, cables, effects, hit targets
+- [x] Make the Phaser canvas responsive so the rack fills the main play area instead of a fixed debug-sized viewport
+- [x] Add camera zoom and pan tuned for rack work while keeping all interactions readable
 
 ### Sprint 2.3 — Tactile Rack Interactions
 Move primary gameplay into the rack scene so the player learns by manipulating hardware directly.

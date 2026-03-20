@@ -1,5 +1,6 @@
 import { useEffect, useRef } from "react";
 import Phaser from "phaser";
+import { PreloadScene } from "./PreloadScene";
 import { RackScene } from "./RackScene";
 
 export function PhaserGame() {
@@ -12,13 +13,22 @@ export function PhaserGame() {
     gameRef.current = new Phaser.Game({
       type: Phaser.AUTO,
       parent: containerRef.current,
-      width: 600,
-      height: 800,
-      backgroundColor: "#1a1a2e",
-      scene: [RackScene],
+      backgroundColor: "#0d0d1a",
+      scene: [PreloadScene, RackScene],
       scale: {
-        mode: Phaser.Scale.FIT,
-        autoCenter: Phaser.Scale.CENTER_BOTH,
+        mode: Phaser.Scale.RESIZE,
+        autoCenter: Phaser.Scale.NO_CENTER,
+        width: "100%",
+        height: "100%",
+      },
+      input: {
+        mouse: {
+          preventDefaultWheel: true,
+        },
+      },
+      render: {
+        antialias: true,
+        pixelArt: false,
       },
     });
 
@@ -28,5 +38,10 @@ export function PhaserGame() {
     };
   }, []);
 
-  return <div ref={containerRef} style={{ width: 600, height: 800 }} />;
+  return (
+    <div
+      ref={containerRef}
+      style={{ width: "100%", height: "100%", overflow: "hidden" }}
+    />
+  );
 }
