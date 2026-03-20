@@ -163,7 +163,7 @@ export class WorldScene extends Phaser.Scene {
   /** Apply the correct scale for the current room to the player sprite */
   private applyPlayerScale() {
     const ps = this.getPlayerScale();
-    this.playerSprite.setScale(ps / 384);
+    this.playerSprite.setScale(ps / 580);
     this.playerSprite.setOrigin(0.5, 0.85);
   }
 
@@ -239,18 +239,17 @@ export class WorldScene extends Phaser.Scene {
     // Use real player sprite sheet or fallback
     if (this.textures.exists("player-walk")) {
       this.playerSprite = this.add.sprite(0, 0, "player-walk", 0);
-      // Each frame is 384x1024. Character is ~384x700 with whitespace above.
-      // Scale to ~56x150 preserving aspect ratio, then offset up so feet touch floor.
-      const scale = 90 / 384; // target ~90px wide
+      // Each frame is 580x940. Scale to target width preserving aspect ratio.
+      const scale = 90 / 580; // target ~90px wide
       this.playerSprite.setScale(scale);
       // Shift sprite up so feet align with container origin (floor)
       this.playerSprite.setOrigin(0.5, 0.85);
 
-      // Create animations from unified spritesheet: frame 0 = idle, frames 1-4 = walk
+      // Create animations from unified spritesheet: frame 0 = idle, frames 1-8 = walk
       this.anims.create({
         key: "walk",
-        frames: this.anims.generateFrameNumbers("player-walk", { start: 1, end: 4 }),
-        frameRate: 8,
+        frames: this.anims.generateFrameNumbers("player-walk", { start: 1, end: 8 }),
+        frameRate: 10,
         repeat: -1,
       });
       this.anims.create({

@@ -37,10 +37,10 @@ export class PreloadScene extends Phaser.Scene {
     this.load.image("device-router", "assets/devices/device-router-1u.png");
     this.load.image("device-firewall", "assets/devices/device-firewall-1u.png");
 
-    // Player — single spritesheet: frame 0 = idle, frames 1-4 = walk
+    // Player — single spritesheet: frame 0 = idle, frames 1-8 = walk
     this.load.spritesheet("player-walk", "assets/player/player-walk.png", {
-      frameWidth: 384,
-      frameHeight: 1024,
+      frameWidth: 580,
+      frameHeight: 940,
     });
 
     // UI
