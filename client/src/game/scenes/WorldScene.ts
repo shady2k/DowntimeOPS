@@ -463,16 +463,21 @@ export class WorldScene extends Phaser.Scene {
     // Animation and facing
     if (vx !== 0) {
       // Sprite faces right by default — flip when walking left
-      if (vx < 0) this.playerSprite.setFlipX(true);
-      else this.playerSprite.setFlipX(false);
+      this.playerSprite.setFlipX(vx < 0);
 
-      if (this.anims.exists("walk") && this.playerSprite.anims.currentAnim?.key !== "walk") {
-        this.playerSprite.play("walk");
+      // Play walk animation if not already playing
+      if (this.anims.exists("walk")) {
+        if (!this.playerSprite.anims.isPlaying || this.playerSprite.anims.currentAnim?.key !== "walk") {
+          this.playerSprite.play("walk");
+        }
       }
     } else {
-      // Idle
-      if (this.anims.exists("idle") && this.playerSprite.anims.currentAnim?.key !== "idle") {
-        this.playerSprite.play("idle");
+      // Stop animation and show idle frame (frame 0)
+      if (this.playerSprite.anims.isPlaying) {
+        this.playerSprite.stop();
+      }
+      if (this.textures.exists("player-walk")) {
+        this.playerSprite.setFrame(0);
       }
     }
   }
