@@ -163,9 +163,7 @@ export class WorldScene extends Phaser.Scene {
   /** Apply the correct scale for the current room to the player sprite */
   private applyPlayerScale() {
     const ps = this.getPlayerScale();
-    const texKey = this.playerSprite.texture.key;
-    const frameW = texKey === "player-walk" ? 384 : 1024;
-    this.playerSprite.setScale(ps / frameW);
+    this.playerSprite.setScale(ps / 384);
     this.playerSprite.setOrigin(0.5, 0.85);
   }
 
@@ -248,10 +246,10 @@ export class WorldScene extends Phaser.Scene {
       // Shift sprite up so feet align with container origin (floor)
       this.playerSprite.setOrigin(0.5, 0.85);
 
-      // Create walk animation
+      // Create animations from unified spritesheet: frame 0 = idle, frames 1-4 = walk
       this.anims.create({
         key: "walk",
-        frames: this.anims.generateFrameNumbers("player-walk", { start: 0, end: 3 }),
+        frames: this.anims.generateFrameNumbers("player-walk", { start: 1, end: 4 }),
         frameRate: 8,
         repeat: -1,
       });
@@ -446,12 +444,8 @@ export class WorldScene extends Phaser.Scene {
       // Sprite faces right by default — flip when walking left
       this.playerSprite.setFlipX(vx < 0);
 
-      // Switch to walk spritesheet and play animation
+      // Play walk animation
       if (this.anims.exists("walk")) {
-        if (this.playerSprite.texture.key !== "player-walk") {
-          this.playerSprite.setTexture("player-walk", 0);
-          this.applyPlayerScale();
-        }
         if (!this.playerSprite.anims.isPlaying || this.playerSprite.anims.currentAnim?.key !== "walk") {
           this.playerSprite.play("walk");
         }
@@ -461,10 +455,8 @@ export class WorldScene extends Phaser.Scene {
       if (this.playerSprite.anims.isPlaying) {
         this.playerSprite.stop();
       }
-      if (this.textures.exists("player-idle") && this.playerSprite.texture.key !== "player-idle") {
-        this.playerSprite.setTexture("player-idle");
-        this.applyPlayerScale();
-      }
+      // Show idle frame (frame 0) from the same spritesheet
+      this.playerSprite.setFrame(0);
     }
   }
 
