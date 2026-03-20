@@ -1,6 +1,7 @@
 import type { GameState } from "../types/GameState";
 import type { CableType } from "../types/Link";
 import type { TracerPacket } from "../types/TracerPacket";
+import type { Vec2, Facing } from "../types/World";
 
 // --- Param types ---
 
@@ -60,6 +61,40 @@ export interface LoadGameParams {
   saveId: string;
 }
 
+// --- World action params ---
+
+export interface MovePlayerParams {
+  position: Vec2;
+  facing: Facing;
+}
+
+export interface EnterDoorParams {
+  interactableId: string;
+}
+
+export interface BuyItemParams {
+  listingId: string;
+}
+
+export interface PickupItemParams {
+  itemId: string;
+}
+
+export interface DropItemParams {
+  position: Vec2;
+}
+
+export interface PlaceRackParams {
+  itemId: string;
+  zoneId: string;
+}
+
+export interface InstallDeviceWorldParams {
+  itemId: string;
+  rackItemId: string;
+  slotU: number;
+}
+
 // --- Result types ---
 
 export interface PlaceDeviceResult {
@@ -99,6 +134,15 @@ export interface RpcMethods {
   getSnapshot: { params: void; result: GetSnapshotResult };
   saveGame: { params: SaveGameParams; result: void };
   loadGame: { params: LoadGameParams; result: void };
+
+  // World actions
+  movePlayer: { params: MovePlayerParams; result: void };
+  enterDoor: { params: EnterDoorParams; result: void };
+  buyItem: { params: BuyItemParams; result: void };
+  pickupItem: { params: PickupItemParams; result: void };
+  dropItem: { params: DropItemParams; result: void };
+  placeRack: { params: PlaceRackParams; result: void };
+  installDevice: { params: InstallDeviceWorldParams; result: void };
 }
 
 export type RpcMethodName = keyof RpcMethods;

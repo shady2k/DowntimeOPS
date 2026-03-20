@@ -14,7 +14,7 @@ export interface GameStore {
   // Ephemeral UI state
   selectedDeviceId: string | null;
   selectedPortId: string | null;
-  activeView: "rack" | "room" | "trace" | "map";
+  activeView: "rack" | "room" | "trace" | "map" | "world" | "shop";
 
   // Rack interaction state
   cablingFrom: CablingSource | null;
@@ -49,7 +49,7 @@ export const useGameStore = create<GameStore>((set) => ({
   // Ephemeral UI state
   selectedDeviceId: null,
   selectedPortId: null,
-  activeView: "rack",
+  activeView: "world",
 
   // Rack interaction state
   cablingFrom: null,

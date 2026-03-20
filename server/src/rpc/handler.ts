@@ -92,6 +92,54 @@ export function handleRpcRequest(
       case "pause":
         return handleAction(server, id, { type: "SET_SPEED", speed: 0 });
 
+      // --- World actions ---
+
+      case "movePlayer":
+        return handleAction(server, id, {
+          type: "MOVE_PLAYER",
+          position: (params as Record<string, unknown>).position as { x: number; y: number },
+          facing: (params as Record<string, unknown>).facing as "up" | "down" | "left" | "right",
+        });
+
+      case "enterDoor":
+        return handleAction(server, id, {
+          type: "ENTER_DOOR",
+          interactableId: (params as Record<string, unknown>).interactableId as string,
+        });
+
+      case "buyItem":
+        return handleAction(server, id, {
+          type: "BUY_ITEM",
+          listingId: (params as Record<string, unknown>).listingId as string,
+        });
+
+      case "pickupItem":
+        return handleAction(server, id, {
+          type: "PICKUP_ITEM",
+          itemId: (params as Record<string, unknown>).itemId as string,
+        });
+
+      case "dropItem":
+        return handleAction(server, id, {
+          type: "DROP_ITEM",
+          position: (params as Record<string, unknown>).position as { x: number; y: number },
+        });
+
+      case "placeRack":
+        return handleAction(server, id, {
+          type: "PLACE_RACK",
+          itemId: (params as Record<string, unknown>).itemId as string,
+          zoneId: (params as Record<string, unknown>).zoneId as string,
+        });
+
+      case "installDevice":
+        return handleAction(server, id, {
+          type: "INSTALL_DEVICE",
+          itemId: (params as Record<string, unknown>).itemId as string,
+          rackItemId: (params as Record<string, unknown>).rackItemId as string,
+          slotU: (params as Record<string, unknown>).slotU as number,
+        });
+
       case "getSnapshot":
         return rpcSuccess(id, { state: server.getState() });
 

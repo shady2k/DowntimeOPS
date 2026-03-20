@@ -24,6 +24,11 @@ import {
 } from "./simulation/tracer";
 import { createInitialTutorial } from "./simulation/objectives";
 import { createInitialMilestones } from "./simulation/milestones";
+import { createInitialWorld } from "./world/worldFactory";
+import {
+  applyWorldAction,
+  type WorldAction,
+} from "./world/worldActions";
 
 // --- Re-exports ---
 
@@ -55,7 +60,8 @@ export type Action =
   | { type: "ACCEPT_CLIENT"; clientId: string }
   | { type: "REJECT_CLIENT"; clientId: string }
   | { type: "SET_SPEED"; speed: number }
-  | { type: "TICK" };
+  | { type: "TICK" }
+  | WorldAction;
 
 export interface EngineResult {
   state: GameState;
@@ -73,8 +79,6 @@ let nextServerIp = 10;
 export function createInitialState(): GameState {
   nextServerIp = 10;
 
-  const rackId = genId("rack");
-
   return {
     tick: 0,
     speed: 1,
@@ -82,16 +86,8 @@ export function createInitialState(): GameState {
     reputation: BALANCE.STARTING_REPUTATION,
     phase: 1,
 
-    racks: {
-      [rackId]: {
-        id: rackId,
-        name: "Rack A",
-        totalU: BALANCE.DEFAULT_RACK_U,
-        devices: {},
-        powerBudgetWatts: BALANCE.DEFAULT_RACK_POWER_BUDGET,
-        currentPowerWatts: 0,
-      },
-    },
+    // No starter rack — player buys and places racks in the world
+    racks: {},
     devices: {},
     links: {},
     vlans: {},
@@ -145,6 +141,8 @@ export function createInitialState(): GameState {
 
     tutorial: createInitialTutorial(),
     progression: createInitialMilestones(),
+
+    world: createInitialWorld(),
   };
 }
 
@@ -177,6 +175,37 @@ export function applyAction(state: GameState, action: Action): EngineResult {
       return setSpeed(state, action.speed);
     case "TICK":
       return { state: processTick(state) };
+
+    // World actions
+    case "MOVE_PLAYER":
+    case "ENTER_DOOR":
+    case "BUY_ITEM":
+    case "PICKUP_ITEM":
+    case "DROP_ITEM":
+    case "PLACE_RACK":
+      return applyWorldAction(state, action);
+
+    case "INSTALL_DEVICE": {
+      // First validate & update world state
+      const worldResult = applyWorldAction(state, action);
+      if (worldResult.error) return worldResult;
+
+      // Then chain with PLACE_DEVICE to create the simulation-layer device
+      const rackItem = state.world.items[action.rackItemId];
+      if (!rackItem?.installedInRackId) {
+        return { state, error: "Rack not found" };
+      }
+      const item = state.world.items[action.itemId];
+      if (!item) return { state, error: "Item not found" };
+
+      return placeDevice(
+        worldResult.state,
+        rackItem.installedInRackId,
+        action.slotU,
+        item.model,
+      );
+    }
+
     default:
       return { state, error: "Unknown action type" };
   }

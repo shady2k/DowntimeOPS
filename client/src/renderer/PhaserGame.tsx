@@ -2,6 +2,8 @@ import { useEffect, useRef } from "react";
 import Phaser from "phaser";
 import { PreloadScene } from "./PreloadScene";
 import { RackScene } from "./RackScene";
+import { WorldScene } from "../game/scenes/WorldScene";
+import { UIScene } from "../game/scenes/UIScene";
 
 export function PhaserGame() {
   const containerRef = useRef<HTMLDivElement>(null);
@@ -14,7 +16,14 @@ export function PhaserGame() {
       type: Phaser.AUTO,
       parent: containerRef.current,
       backgroundColor: "#1e1814",
-      scene: [PreloadScene, RackScene],
+      scene: [PreloadScene, WorldScene, UIScene, RackScene],
+      physics: {
+        default: "arcade",
+        arcade: {
+          gravity: { x: 0, y: 0 },
+          debug: false,
+        },
+      },
       scale: {
         mode: Phaser.Scale.RESIZE,
         autoCenter: Phaser.Scale.NO_CENTER,

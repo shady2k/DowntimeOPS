@@ -17,3 +17,23 @@ export type { FirewallRule } from "./FirewallRule";
 export type { Alert, LogEntry, Uplink, SaveInfo } from "./Common";
 export type { Objective, ObjectiveId, TutorialState } from "./Objective";
 export type { Milestone, MilestoneId, MilestoneState } from "./Milestone";
+export type {
+  Vec2,
+  Facing,
+  RoomId,
+  ItemId,
+  InteractableId,
+  RoomKind,
+  Room,
+  PlacementKind,
+  PlacementZone,
+  InteractableKind,
+  Interactable,
+  PlayerState,
+  ItemKind,
+  ItemState,
+  ItemInstance,
+  ShopListing,
+  ShopState,
+  WorldState,
+} from "./World";

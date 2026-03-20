@@ -76,6 +76,6 @@ export class PreloadScene extends Phaser.Scene {
     // Generate placeholder textures for any keys not yet loaded from files
     generateTextures(this);
 
-    this.scene.start("RackScene");
+    this.scene.start("WorldScene");
   }
 }
