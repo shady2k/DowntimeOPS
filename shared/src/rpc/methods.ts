@@ -116,6 +116,12 @@ export interface PickupFromStorageParams {
   shelfId: string;
 }
 
+export interface InstallDeviceFromStorageParams {
+  itemId: string;
+  rackItemId: string;
+  slotU: number;
+}
+
 // --- Result types ---
 
 export interface PlaceDeviceResult {
@@ -176,6 +182,7 @@ export interface RpcMethods {
   installDevice: { params: InstallDeviceWorldParams; result: void };
   buyCartItems: { params: BuyCartItemsParams; result: BuyCartItemsResult };
   pickupFromStorage: { params: PickupFromStorageParams; result: void };
+  installDeviceFromStorage: { params: InstallDeviceFromStorageParams; result: void };
 }
 
 export type RpcMethodName = keyof RpcMethods;

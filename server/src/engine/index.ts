@@ -187,7 +187,8 @@ export function applyAction(state: GameState, action: Action): EngineResult {
     case "PICKUP_FROM_STORAGE":
       return applyWorldAction(state, action);
 
-    case "INSTALL_DEVICE": {
+    case "INSTALL_DEVICE":
+    case "INSTALL_DEVICE_FROM_STORAGE": {
       // First validate & update world state
       const worldResult = applyWorldAction(state, action);
       if (worldResult.error) return worldResult;

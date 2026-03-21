@@ -35,7 +35,8 @@ export type WorldAction =
   | { type: "DROP_ITEM"; position: Vec2 }
   | { type: "PLACE_RACK"; itemId: string; zoneId: string }
   | { type: "INSTALL_DEVICE"; itemId: string; rackItemId: string; slotU: number }
-  | { type: "PICKUP_FROM_STORAGE"; shelfId: string };
+  | { type: "PICKUP_FROM_STORAGE"; shelfId: string }
+  | { type: "INSTALL_DEVICE_FROM_STORAGE"; itemId: string; rackItemId: string; slotU: number };
 
 // --- Action dispatcher ---
 
@@ -62,6 +63,8 @@ export function applyWorldAction(
       return installDevice(state, action.itemId, action.rackItemId, action.slotU);
     case "PICKUP_FROM_STORAGE":
       return pickupFromStorage(state, action.shelfId);
+    case "INSTALL_DEVICE_FROM_STORAGE":
+      return installDeviceFromStorage(state, action.itemId, action.rackItemId, action.slotU);
     default: {
       const _exhaustive: never = action;
       return { state, error: `Unknown world action type: ${(_exhaustive as { type: string }).type}` };
@@ -488,6 +491,89 @@ function installDevice(
             installedAtSlotU: _slotU,
           },
         },
+      },
+    },
+  };
+}
+
+/**
+ * INSTALL_DEVICE_FROM_STORAGE: pick item directly from storage and install in rack.
+ * Combines pickup-from-storage + install in one atomic action.
+ * The caller (engine/index.ts) chains with PLACE_DEVICE for simulation layer.
+ */
+function installDeviceFromStorage(
+  state: GameState,
+  itemId: string,
+  rackItemId: string,
+  slotU: number,
+): EngineResult {
+  const item = state.world.items[itemId];
+  if (!item) return { state, error: "Item not found" };
+  if (item.kind !== "device") return { state, error: "Item is not a device" };
+  if (item.state !== "in_storage") return { state, error: "Item is not in storage" };
+
+  const rackItem = state.world.items[rackItemId];
+  if (!rackItem) return { state, error: "Rack item not found" };
+  if (!rackItem.installedInRackId) return { state, error: "Rack has no simulation rack" };
+
+  const rackId = rackItem.installedInRackId;
+
+  // Remove from storage packages
+  const newPackages = { ...state.world.storage.packages };
+  delete newPackages[itemId];
+
+  // Free the shelf this item occupies (if any)
+  const storageRoom = state.world.rooms["storage"];
+  let updatedRooms = state.world.rooms;
+
+  if (storageRoom) {
+    let updatedZones = { ...storageRoom.placementZones };
+    for (const [zoneId, zone] of Object.entries(updatedZones)) {
+      if (zone.kind === "storage_shelf" && zone.occupiedByItemId === itemId) {
+        updatedZones[zoneId] = { ...zone, occupiedByItemId: null };
+
+        // Auto-promote next queued package onto freed shelf
+        const shelvesWithItems = new Set(
+          Object.values(updatedZones)
+            .filter((z) => z.kind === "storage_shelf" && z.occupiedByItemId)
+            .map((z) => z.occupiedByItemId),
+        );
+        const unshelfedPackage = Object.values(newPackages).find(
+          (pkg) => !shelvesWithItems.has(pkg.itemId),
+        );
+        if (unshelfedPackage) {
+          updatedZones = {
+            ...updatedZones,
+            [zoneId]: { ...updatedZones[zoneId], occupiedByItemId: unshelfedPackage.itemId },
+          };
+        }
+        break;
+      }
+    }
+    updatedRooms = {
+      ...state.world.rooms,
+      storage: { ...storageRoom, placementZones: updatedZones },
+    };
+  }
+
+  return {
+    state: {
+      ...state,
+      world: {
+        ...state.world,
+        items: {
+          ...state.world.items,
+          [itemId]: {
+            ...item,
+            state: "installed",
+            roomId: rackItem.roomId,
+            position: rackItem.position,
+            installedInRackId: rackId,
+            installedAtSlotU: slotU,
+          },
+        },
+        storage: { packages: newPackages },
+        rooms: updatedRooms,
       },
     },
   };

@@ -8,6 +8,8 @@ export interface CablingSource {
   portIndex: number;
 }
 
+export type RackMode = "overview" | "work";
+
 export interface GameStore {
   // Server-synced state
   state: GameState | null;
@@ -24,6 +26,8 @@ export interface GameStore {
 
   // Rack interaction state
   openRackItemId: string | null;
+  rackMode: RackMode;
+  workFocusDeviceId: string | null;
   cablingFrom: CablingSource | null;
   placingModel: string | null;
   selectedClientId: string | null;
@@ -48,6 +52,10 @@ export interface GameStore {
   // Rack panel actions
   openRack: (itemId: string) => void;
   closeRack: () => void;
+
+  // Rack mode actions
+  enterWorkMode: (deviceId: string) => void;
+  enterOverviewMode: () => void;
 
   // Rack interaction actions
   startCabling: (source: CablingSource) => void;
@@ -74,6 +82,8 @@ export const useGameStore = create<GameStore>((set) => ({
 
   // Rack interaction state
   openRackItemId: null,
+  rackMode: "overview",
+  workFocusDeviceId: null,
   cablingFrom: null,
   placingModel: null,
   selectedClientId: null,
@@ -108,6 +118,8 @@ export const useGameStore = create<GameStore>((set) => ({
       selectedPortId: null,
       activeView: "world",
       openRackItemId: null,
+      rackMode: "overview",
+      workFocusDeviceId: null,
       cablingFrom: null,
       placingModel: null,
       selectedClientId: null,
@@ -131,7 +143,20 @@ export const useGameStore = create<GameStore>((set) => ({
 
   // Rack panel actions
   openRack: (itemId) => set({ activeView: "rack", openRackItemId: itemId }),
-  closeRack: () => set({ activeView: "world", openRackItemId: null }),
+  closeRack: () =>
+    set({
+      activeView: "world",
+      openRackItemId: null,
+      rackMode: "overview",
+      workFocusDeviceId: null,
+    }),
+
+  // Rack mode actions
+  enterWorkMode: (deviceId) =>
+    set({ rackMode: "work", workFocusDeviceId: deviceId, selectedDeviceId: deviceId }),
+
+  enterOverviewMode: () =>
+    set({ rackMode: "overview", workFocusDeviceId: null }),
 
   // Rack interaction actions
   startCabling: (source) =>

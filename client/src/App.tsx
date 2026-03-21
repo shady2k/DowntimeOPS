@@ -4,6 +4,7 @@ import { useGameStore } from "./store/gameStore";
 import { PhaserGame } from "./renderer/PhaserGame";
 import { ShopBrowser } from "./ui/shop/ShopBrowser";
 import { InventoryHUD } from "./ui/hud/InventoryHUD";
+import { RackModeIndicator } from "./ui/hud/RackModeIndicator";
 import { MainMenu } from "./ui/MainMenu";
 import { THEME } from "./ui/theme";
 
@@ -63,6 +64,7 @@ function App() {
     <div style={{ width: "100vw", height: "100vh", overflow: "hidden", position: "relative" }}>
       <PhaserGame />
       <InventoryHUD />
+      <RackModeIndicator />
       <ShopBrowser />
       {pauseMenuOpen && <MainMenu />}
     </div>

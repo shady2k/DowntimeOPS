@@ -208,6 +208,14 @@ export function handleRpcRequest(
           slotU: (params as Record<string, unknown>).slotU as number,
         });
 
+      case "installDeviceFromStorage":
+        return handleAction(server, id, {
+          type: "INSTALL_DEVICE_FROM_STORAGE",
+          itemId: (params as Record<string, unknown>).itemId as string,
+          rackItemId: (params as Record<string, unknown>).rackItemId as string,
+          slotU: (params as Record<string, unknown>).slotU as number,
+        });
+
       case "buyCartItems": {
         const state = server.getState()!;
         const p = params as Record<string, unknown>;

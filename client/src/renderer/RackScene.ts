@@ -11,6 +11,21 @@ import { PerfMonitor } from "./PerfMonitor";
 const RACK_X = 370;
 const RACK_Y = 80;
 
+// Zoom bands (multiplied by DPR at runtime)
+const ZOOM_BANDS = {
+  OVERVIEW: 0.55, // full rack visible
+  HALF: 1.0,      // ~21 U visible
+  DEVICE: 1.6,    // ~7 U visible, device-level detail
+  PORT: 2.5,      // ~3 U visible, port-level detail
+} as const;
+
+const ZOOM_BAND_VALUES = [
+  ZOOM_BANDS.OVERVIEW,
+  ZOOM_BANDS.HALF,
+  ZOOM_BANDS.DEVICE,
+  ZOOM_BANDS.PORT,
+];
+
 // Depth layers
 const DEPTH = {
   BACKGROUND: 0,
@@ -91,6 +106,30 @@ export class RackScene extends Phaser.Scene {
   private mouseWorldX = 0;
   private mouseWorldY = 0;
 
+  // Zoom
+  private zoomTween: Phaser.Tweens.Tween | null = null;
+  private dpr = 1;
+
+  // Double-click detection
+  private lastDeviceClickTime = 0;
+  private lastDeviceClickId = "";
+
+  // Workbench drag-to-install / drag-to-remove
+  private workbenchItems: Phaser.GameObjects.Container[] = [];
+  private draggingDevice: {
+    itemId: string;
+    model: string;
+    uHeight: number;
+    source: "storage" | "carried" | "installed";
+    deviceId?: string; // set when dragging from rack (installed device)
+    sprite: Phaser.GameObjects.Image;
+    offsetX: number;
+    offsetY: number;
+  } | null = null;
+  private dragGhost: Phaser.GameObjects.Graphics | null = null;
+  private isDragStarted = false;
+  private dragStartPointer = { x: 0, y: 0 };
+
   // ── Animation state ──────────────────────────────────────────
   private trafficPulses: TrafficPulse[] = [];
   private failureVfx = new Map<string, FailureVfx>();
@@ -116,6 +155,9 @@ export class RackScene extends Phaser.Scene {
   }
 
   create() {
+    // Opaque background color prevents other scenes from bleeding through
+    this.cameras.main.setBackgroundColor("#1a1410");
+
     this.createLayers();
     this.createBackground();
     this.createRackFrame();
@@ -148,6 +190,8 @@ export class RackScene extends Phaser.Scene {
       const stateKey = [
         state.tick,
         store.openRackItemId ?? "",
+        store.rackMode,
+        store.workFocusDeviceId ?? "",
         Object.keys(rackDevices).length,
         Object.keys(state.links).length,
         store.selectedDeviceId,
@@ -188,6 +232,7 @@ export class RackScene extends Phaser.Scene {
     // When scene wakes (returned to from WorldScene), refresh title and re-render
     this.events.on("wake", () => {
       this.updateRackTitle();
+      this.setupCamera(); // reset zoom to overview
       this.autoEnterPlacementMode();
       this.lastStateKey = ""; // force re-render
       const s = useGameStore.getState();
@@ -209,6 +254,7 @@ export class RackScene extends Phaser.Scene {
     this.updateTrafficPulses(dt);
     this.updateFailureVfx(dt);
     this.updatePlacementAnimations(dt);
+    this.updateDragPreview();
     this.renderCablePreview();
     this.renderAnimatedEffects();
   }
@@ -230,7 +276,10 @@ export class RackScene extends Phaser.Scene {
   // ── Background ───────────────────────────────────────────────
 
   private createBackground() {
-    const bg = this.add.image(0, 0, "room-bg").setOrigin(0, 0);
+    // Large solid rectangle to fully cover any scenes rendering beneath
+    const bg = this.add.graphics();
+    bg.fillStyle(0x1a1410, 1);
+    bg.fillRect(-500, -500, 2200, 2200);
     bg.setDepth(DEPTH.BACKGROUND);
     this.bgLayer.add(bg);
   }
@@ -287,12 +336,10 @@ export class RackScene extends Phaser.Scene {
 
   private setupCamera() {
     const cam = this.cameras.main;
-    const dpr = window.devicePixelRatio || 1;
+    this.dpr = window.devicePixelRatio || 1;
     const rackTotalH = RACK.HEIGHT + 40; // slots + title + padding
-    // scale.height is in physical pixels (960*dpr x 540*dpr), convert to logical
-    const viewH = this.scale.height / dpr;
-    const zoom = Math.min(1, viewH / rackTotalH) * dpr;
-    cam.setZoom(zoom);
+    cam.setBackgroundColor(0x1a1410);
+    cam.setZoom(ZOOM_BANDS.OVERVIEW * this.dpr);
     cam.setBounds(0, 0, 1200, rackTotalH + RACK_Y * 2);
     cam.centerOn(RACK_X + RACK.WIDTH / 2, RACK_Y + rackTotalH / 2);
   }
@@ -313,9 +360,22 @@ export class RackScene extends Phaser.Scene {
         _dy: number,
         dz: number,
       ) => {
-        const cam = this.cameras.main;
-        const dpr = window.devicePixelRatio || 1;
-        cam.setZoom(Phaser.Math.Clamp(cam.zoom - dz * 0.001, 0.5 * dpr, 2.5 * dpr));
+        const direction = dz > 0 ? -1 : 1; // scroll down = zoom out, up = zoom in
+        const currentBand = this.getCurrentZoomBandIndex();
+        const targetIndex = Phaser.Math.Clamp(
+          currentBand + direction,
+          0,
+          ZOOM_BAND_VALUES.length - 1,
+        );
+
+        // Clamp to mode zoom range
+        const store = useGameStore.getState();
+        const minIndex = store.rackMode === "work" ? 1 : 0; // Work: HALF..PORT, Overview: OVERVIEW..HALF
+        const maxIndex = store.rackMode === "work" ? 3 : 1;
+        const clampedIndex = Phaser.Math.Clamp(targetIndex, minIndex, maxIndex);
+
+        const targetZoom = ZOOM_BAND_VALUES[clampedIndex] * this.dpr;
+        this.animateZoomTo(targetZoom);
       },
     );
 
@@ -347,14 +407,32 @@ export class RackScene extends Phaser.Scene {
 
     this.input.on("pointerup", () => {
       this.isPanning = false;
+      if (this.draggingDevice) {
+        this.handleDragDrop();
+      }
     });
 
     this.input.keyboard?.on("keydown-ESC", () => {
       const store = useGameStore.getState();
+
+      // Layer 1: cancel active interactions
+      if (this.draggingDevice) { this.cancelDrag(); return; }
       if (store.cablingFrom) { store.cancelCabling(); return; }
       if (store.placingModel) { store.cancelPlacing(); return; }
 
-      // Return to world view
+      // Layer 2: Work → Overview
+      if (store.rackMode === "work") {
+        store.enterOverviewMode();
+        const rackTotalH = RACK.HEIGHT + 40;
+        this.animateCameraTo(
+          RACK_X + RACK.WIDTH / 2,
+          RACK_Y + rackTotalH / 2,
+          ZOOM_BANDS.OVERVIEW * this.dpr,
+        );
+        return;
+      }
+
+      // Layer 3: Overview → exit rack scene
       store.closeRack();
       this.scene.sleep("RackScene");
       this.scene.wake("WorldScene");
@@ -362,6 +440,7 @@ export class RackScene extends Phaser.Scene {
 
     this.input.on("pointerdown", (pointer: Phaser.Input.Pointer) => {
       if (pointer.rightButtonDown()) {
+        if (this.draggingDevice) this.cancelDrag();
         const store = useGameStore.getState();
         if (store.cablingFrom) store.cancelCabling();
         if (store.placingModel) store.cancelPlacing();
@@ -371,6 +450,56 @@ export class RackScene extends Phaser.Scene {
     this.game.canvas.addEventListener("contextmenu", (e) =>
       e.preventDefault(),
     );
+  }
+
+  // ── Zoom helpers ────────────────────────────────────────────
+
+  private getCurrentZoomBandIndex(): number {
+    const currentZoom = this.cameras.main.zoom / this.dpr;
+    let closest = 0;
+    let closestDist = Math.abs(ZOOM_BAND_VALUES[0] - currentZoom);
+    for (let i = 1; i < ZOOM_BAND_VALUES.length; i++) {
+      const dist = Math.abs(ZOOM_BAND_VALUES[i] - currentZoom);
+      if (dist < closestDist) {
+        closest = i;
+        closestDist = dist;
+      }
+    }
+    return closest;
+  }
+
+  private animateZoomTo(targetZoom: number, duration = 200) {
+    this.zoomTween?.stop();
+    const cam = this.cameras.main;
+    this.zoomTween = this.tweens.add({
+      targets: cam,
+      zoom: targetZoom,
+      duration,
+      ease: "Quad.easeOut",
+    });
+  }
+
+  /** Smoothly animate camera to a world position and zoom level */
+  public animateCameraTo(
+    centerX: number,
+    centerY: number,
+    zoom: number,
+    duration = 300,
+  ) {
+    this.zoomTween?.stop();
+    const cam = this.cameras.main;
+    // Convert centerX/centerY to scrollX/scrollY
+    const targetScrollX = centerX - (this.scale.width / zoom) / 2;
+    const targetScrollY = centerY - (this.scale.height / zoom) / 2;
+
+    this.zoomTween = this.tweens.add({
+      targets: cam,
+      scrollX: targetScrollX,
+      scrollY: targetScrollY,
+      zoom,
+      duration,
+      ease: "Quad.easeOut",
+    });
   }
 
   // ── Coordinate helpers ───────────────────────────────────────
@@ -391,20 +520,10 @@ export class RackScene extends Phaser.Scene {
     }
   }
 
-  /** If the player is carrying a device, auto-enter placement mode */
+  /** If the player is carrying a device, it appears on the workbench for drag-to-install */
   private autoEnterPlacementMode() {
-    const store = useGameStore.getState();
-    const state = store.state;
-    if (!state) return;
-
-    const carryingId = state.world.player.carryingItemId;
-    if (!carryingId) return;
-
-    const item = state.world.items[carryingId];
-    if (!item || item.kind !== "device") return;
-
-    // Enter placement mode with the carried device's model
-    store.startPlacing(item.model);
+    // No-op: carried devices now appear on the workbench and are dragged in.
+    // The old click-to-place slot flow is replaced by drag-to-install.
   }
 
   /** Resolve the simulation rackId from the currently opened rack item */
@@ -514,6 +633,7 @@ export class RackScene extends Phaser.Scene {
     this.renderDevices(state, store);
     this.renderCables(state, store);
     this.renderPlacementSlots(state, store);
+    this.renderWorkbench(state, store);
   }
 
   // ── Sync animation state with game state ─────────────────────
@@ -636,6 +756,36 @@ export class RackScene extends Phaser.Scene {
     this.pendingPlacements = this.pendingPlacements.filter(
       (a) => a.progress < 1,
     );
+  }
+
+  private updateDragPreview() {
+    if (!this.draggingDevice) {
+      this.dragGhost?.clear();
+      return;
+    }
+
+    // Move dragged sprite to mouse position
+    this.draggingDevice.sprite.setPosition(this.mouseWorldX, this.mouseWorldY);
+
+    // Show ghost snap preview at nearest valid slot
+    if (!this.dragGhost) return;
+    this.dragGhost.clear();
+
+    const targetU = this.getSlotAtPosition(this.mouseWorldY);
+    if (!targetU) return;
+
+    const x = this.deviceX();
+    const y = this.slotY(targetU) + 1;
+    const w = RACK.INNER_WIDTH - 4;
+    const h = RACK.SLOT_HEIGHT - 2;
+    const free = this.isSlotFree(targetU);
+
+    // Ghost outline at snap position
+    const color = free ? PALETTE.slotValid : PALETTE.slotInvalid;
+    this.dragGhost.lineStyle(2, color, 0.8);
+    this.dragGhost.strokeRoundedRect(x, y, w, h, 3);
+    this.dragGhost.fillStyle(color, 0.15);
+    this.dragGhost.fillRoundedRect(x, y, w, h, 3);
   }
 
   // ── Animated rendering (per frame) ──────────────────────────
@@ -843,70 +993,66 @@ export class RackScene extends Phaser.Scene {
     container.setDepth(DEPTH.DEVICES);
     this.deviceLayer.add(container);
 
-    // Device sprite
-    const textureKey = `device-${device.type}`;
-    const sprite = this.add.image(0, 0, textureKey).setOrigin(0, 0);
-    if (device.uHeight > 1) sprite.setDisplaySize(sprite.width, h);
+    const isOverview = store.rackMode === "overview";
+
+    // Device body — draw directly with graphics for precise sizing
+    const typeColors: Record<string, number> = {
+      server: PALETTE.server,
+      switch: PALETTE.switch,
+      router: PALETTE.router,
+      firewall: PALETTE.firewall,
+    };
+    const faceColors: Record<string, number> = {
+      server: PALETTE.serverFace,
+      switch: PALETTE.switchFace,
+      router: PALETTE.routerFace,
+      firewall: PALETTE.firewallFace,
+    };
+    const baseColor = typeColors[device.type] ?? PALETTE.server;
+    const faceColor = faceColors[device.type] ?? PALETTE.serverFace;
+
+    const body = this.add.graphics();
+    body.fillStyle(baseColor, selected ? 1 : 0.85);
+    body.fillRoundedRect(0, 0, w, h, 2);
+    body.fillStyle(faceColor, selected ? 1 : 0.85);
+    body.fillRoundedRect(2, 1, w - 4, h - 2, 1);
+    container.add(body);
+
+    // Use a dummy sprite for the DeviceVisual return type
+    const sprite = this.add.image(0, 0, "__DEFAULT").setOrigin(0, 0).setVisible(false);
     container.add(sprite);
 
-    // State overlay
-    const overlay = this.createStateOverlay(device, selected, h);
-    if (overlay) container.add(overlay);
-
-    // Path highlight — physical glow with double-border
-    if (highlighted) {
-      const glowOuter = this.add.graphics();
-      glowOuter.lineStyle(3, PALETTE.highlight, 0.25);
-      glowOuter.strokeRoundedRect(-2, -2, w + 4, h + 4, 4);
-      container.add(glowOuter);
-
-      const glowInner = this.add.graphics();
-      glowInner.lineStyle(1.5, PALETTE.highlight, 0.6);
-      glowInner.strokeRoundedRect(-1, -1, w + 2, h + 2, 3);
-      container.add(glowInner);
-    }
-
-    // Selection — thick beveled border, physical feel
+    // Selection border
     if (selected) {
-      // Outer shadow
-      const shadowG = this.add.graphics();
-      shadowG.fillStyle(0x000000, 0.3);
-      shadowG.fillRoundedRect(1, 1, w, h, 2);
-      container.add(shadowG);
-
-      // Selection border
-      const borderG = this.add.graphics();
-      borderG.lineStyle(2.5, PALETTE.deviceSelected, 0.9);
-      borderG.strokeRoundedRect(0, 0, w, h, 2);
-      container.add(borderG);
-
-      // Inner highlight line (top edge)
-      const innerG = this.add.graphics();
-      innerG.lineStyle(1, 0xffffff, 0.15);
-      innerG.lineBetween(3, 1, w - 3, 1);
-      container.add(innerG);
+      body.lineStyle(1.5, PALETTE.deviceSelected, 0.8);
+      body.strokeRoundedRect(0, 0, w, h, 2);
     }
 
-    // Device name
-    const label = this.add
-      .text(10, h / 2, device.name, {
-        fontSize: "9px",
-        color: TEXT_COLORS.primary,
-        fontFamily: "'Nunito', sans-serif",
-        fontStyle: "bold",
-      })
-      .setOrigin(0, 0.5);
-    container.add(label);
+    // Highlight border
+    if (highlighted) {
+      body.lineStyle(1.5, PALETTE.highlight, 0.6);
+      body.strokeRoundedRect(-1, -1, w + 2, h + 2, 2);
+    }
 
-    // Status LED with blink for active devices
+    // Status LED — small colored dot
     const statusLed = this.add.graphics();
-    this.drawStatusLed(statusLed, device, w - 20, h / 2);
+    this.drawStatusLed(statusLed, device, w - 12, h / 2);
     container.add(statusLed);
 
-    // Ports
-    this.createPorts(container, device, h, state, store);
+    // Device name + ports — only in work mode
+    if (!isOverview) {
+      const label = this.add
+        .text(10, h / 2, device.name, {
+          fontSize: "9px",
+          color: TEXT_COLORS.primary,
+          fontFamily: "'Nunito', sans-serif",
+          fontStyle: "bold",
+        })
+        .setOrigin(0, 0.5);
+      container.add(label);
 
-    sprite.setAlpha(selected ? 1 : 0.85);
+      this.createPorts(container, device, h, state, store);
+    }
 
     // Hit zone
     const hitZone = this.add
@@ -916,9 +1062,50 @@ export class RackScene extends Phaser.Scene {
       .setInteractive({ useHandCursor: true });
 
     hitZone.on("pointerdown", (pointer: Phaser.Input.Pointer) => {
-      if (pointer.leftButtonDown()) {
-        useGameStore.getState().selectDevice(device.id);
+      if (!pointer.leftButtonDown()) return;
+      const now = this.time.now;
+      const store = useGameStore.getState();
+
+      // Double-click detection (300ms threshold)
+      if (
+        this.lastDeviceClickId === device.id &&
+        now - this.lastDeviceClickTime < 300
+      ) {
+        store.enterWorkMode(device.id);
+        const centerX = x + w / 2;
+        const centerY = y + h / 2;
+        this.animateCameraTo(centerX, centerY, ZOOM_BANDS.DEVICE * this.dpr);
+        this.lastDeviceClickTime = 0;
+        return;
       }
+
+      this.lastDeviceClickTime = now;
+      this.lastDeviceClickId = device.id;
+      store.selectDevice(device.id);
+
+      // Track for potential drag-to-remove
+      this.isDragStarted = false;
+      this.dragStartPointer = { x: pointer.x, y: pointer.y };
+
+      const onMove = (p: Phaser.Input.Pointer) => {
+        if (this.draggingDevice) return;
+        const dist = Math.sqrt(
+          (p.x - this.dragStartPointer.x) ** 2 +
+          (p.y - this.dragStartPointer.y) ** 2,
+        );
+        // Start drag after 8px movement threshold
+        if (dist > 8) {
+          this.isDragStarted = true;
+          this.input.off("pointermove", onMove);
+          this.startDragFromRack(device, p);
+        }
+      };
+      const onUp = () => {
+        this.input.off("pointermove", onMove);
+        this.input.off("pointerup", onUp);
+      };
+      this.input.on("pointermove", onMove);
+      this.input.on("pointerup", onUp);
     });
 
     hitZone.on("pointerover", () => {
@@ -1396,5 +1583,270 @@ export class RackScene extends Phaser.Scene {
       this.hitLayer.add(zone);
       this.placementSlotZones.push(zone);
     }
+  }
+
+  // ── Equipment workbench ────────────────────────────────────
+
+  private renderWorkbench(
+    state: GameState,
+    _store: ReturnType<typeof useGameStore.getState>,
+  ) {
+    // Clear old workbench items
+    for (const item of this.workbenchItems) item.destroy();
+    this.workbenchItems = [];
+
+    // Don't show workbench while dragging (the dragged item is separate)
+    if (this.draggingDevice) return;
+
+    // Collect installable devices: in_storage + carried
+    const modelCounts = new Map<string, { count: number; itemId: string; source: "storage" | "carried" }>();
+    const carryingId = state.world.player.carryingItemId;
+
+    for (const item of Object.values(state.world.items)) {
+      if (item.kind !== "device") continue;
+      if (item.state !== "in_storage" && item.id !== carryingId) continue;
+
+      const source = item.id === carryingId ? "carried" : "storage";
+      const existing = modelCounts.get(item.model);
+      if (existing) {
+        existing.count++;
+      } else {
+        modelCounts.set(item.model, { count: 1, itemId: item.id, source });
+      }
+    }
+
+    if (modelCounts.size === 0) return;
+
+    // Workbench area: left of rack, compact grid
+    const benchX = RACK_X - 100;
+    const benchStartY = RACK_Y + 60;
+    const itemSpacing = 44;
+
+    let index = 0;
+    for (const [model, { count, itemId, source }] of modelCounts) {
+      const y = benchStartY + index * itemSpacing;
+      this.createWorkbenchItem(benchX, y, model, count, itemId, source);
+      index++;
+    }
+  }
+
+  private createWorkbenchItem(
+    x: number,
+    y: number,
+    model: string,
+    count: number,
+    firstItemId: string,
+    source: "storage" | "carried" = "storage",
+  ) {
+    // Map model to device type for texture
+    const typeMap: Record<string, string> = {
+      server_1u: "server",
+      switch_24p: "switch",
+      router_1u: "router",
+    };
+    const deviceType = typeMap[model] ?? "server";
+    const textureKey = `device-${deviceType}`;
+
+    const itemW = 72;
+    const itemH = 36;
+    const container = this.add.container(x, y).setDepth(DEPTH.DEVICES);
+
+    // Device sprite as compact visual (like Uncle Chop items)
+    const sprite = this.add
+      .image(itemW / 2, itemH / 2, textureKey)
+      .setOrigin(0.5, 0.5)
+      .setDisplaySize(itemW - 4, 14);
+    container.add(sprite);
+
+    // Subtle border
+    const border = this.add.graphics();
+    border.lineStyle(1, 0x5a4e40, 0.4);
+    border.strokeRoundedRect(0, 0, itemW, itemH, 3);
+    container.add(border);
+
+    // Count badge (top-right corner)
+    if (count > 1) {
+      const badgeBg = this.add.graphics();
+      badgeBg.fillStyle(0x302820, 0.9);
+      badgeBg.fillCircle(itemW - 2, 2, 8);
+      container.add(badgeBg);
+
+      const badge = this.add
+        .text(itemW - 2, 2, `${count}`, {
+          fontSize: "8px",
+          color: TEXT_COLORS.accent,
+          fontFamily: "'JetBrains Mono', monospace",
+          fontStyle: "bold",
+        })
+        .setOrigin(0.5, 0.5);
+      container.add(badge);
+    }
+
+    // Hit zone for drag
+    const hitZone = this.add
+      .zone(x, y, itemW, itemH)
+      .setOrigin(0, 0)
+      .setDepth(DEPTH.HIT_TARGETS + 3)
+      .setInteractive({ useHandCursor: true });
+
+    hitZone.on("pointerover", () => {
+      border.clear();
+      border.lineStyle(1.5, PALETTE.highlight, 0.7);
+      border.strokeRoundedRect(0, 0, itemW, itemH, 3);
+      sprite.setAlpha(1);
+    });
+
+    hitZone.on("pointerout", () => {
+      if (this.draggingDevice) return;
+      border.clear();
+      border.lineStyle(1, 0x5a4e40, 0.4);
+      border.strokeRoundedRect(0, 0, itemW, itemH, 3);
+      sprite.setAlpha(0.85);
+    });
+
+    hitZone.on("pointerdown", (pointer: Phaser.Input.Pointer) => {
+      if (!pointer.leftButtonDown()) return;
+      this.startDrag(firstItemId, model, deviceType, source, pointer);
+    });
+
+    this.hitLayer.add(hitZone);
+    this.workbenchItems.push(container);
+    this.workbenchItems.push(hitZone as unknown as Phaser.GameObjects.Container);
+  }
+
+  // ── Drag-to-install ────────────────────────────────────────
+
+  private startDrag(
+    itemId: string,
+    model: string,
+    deviceType: string,
+    source: "storage" | "carried",
+    pointer: Phaser.Input.Pointer,
+  ) {
+    const textureKey = `device-${deviceType}`;
+    const w = RACK.INNER_WIDTH - 4;
+    const h = RACK.SLOT_HEIGHT - 2;
+
+    const worldPoint = this.cameras.main.getWorldPoint(pointer.x, pointer.y);
+    const sprite = this.add
+      .image(worldPoint.x, worldPoint.y, textureKey)
+      .setOrigin(0.5, 0.5)
+      .setDisplaySize(w, h)
+      .setAlpha(0.7)
+      .setDepth(DEPTH.EFFECTS + 1);
+
+    this.draggingDevice = {
+      itemId, model, uHeight: 1, source, sprite,
+      offsetX: 0, offsetY: 0,
+    };
+
+    this.dragGhost = this.add.graphics();
+    this.dragGhost.setDepth(DEPTH.SLOT_HIGHLIGHTS + 1);
+  }
+
+  private startDragFromRack(device: Device, pointer: Phaser.Input.Pointer) {
+    this.hideTooltip();
+    const textureKey = `device-${device.type}`;
+    const w = RACK.INNER_WIDTH - 4;
+    const h = device.uHeight * RACK.SLOT_HEIGHT - 2;
+
+    const worldPoint = this.cameras.main.getWorldPoint(pointer.x, pointer.y);
+    const sprite = this.add
+      .image(worldPoint.x, worldPoint.y, textureKey)
+      .setOrigin(0.5, 0.5)
+      .setDisplaySize(w, h)
+      .setAlpha(0.7)
+      .setDepth(DEPTH.EFFECTS + 1);
+
+    this.draggingDevice = {
+      itemId: "", model: device.model, uHeight: device.uHeight,
+      source: "installed", deviceId: device.id,
+      sprite, offsetX: 0, offsetY: 0,
+    };
+
+    this.dragGhost = this.add.graphics();
+    this.dragGhost.setDepth(DEPTH.SLOT_HIGHLIGHTS + 1);
+  }
+
+  private getSlotAtPosition(worldY: number): number | null {
+    const relY = worldY - RACK_Y - 20;
+    const u = Math.round(relY / RACK.SLOT_HEIGHT) + 1;
+    if (u < 1 || u > RACK.TOTAL_U) return null;
+    return u;
+  }
+
+  private isSlotFree(u: number): boolean {
+    const state = useGameStore.getState().state;
+    if (!state) return false;
+    const rackDevices = this.getRackDevices(state);
+    for (const device of Object.values(rackDevices)) {
+      if (u >= device.slotU && u < device.slotU + device.uHeight) return false;
+    }
+    return true;
+  }
+
+  private cancelDrag() {
+    if (!this.draggingDevice) return;
+    this.draggingDevice.sprite.destroy();
+    this.dragGhost?.destroy();
+    this.dragGhost = null;
+    this.draggingDevice = null;
+    this.lastStateKey = "";
+  }
+
+  private handleDragDrop() {
+    if (!this.draggingDevice) return;
+
+    const { itemId, source, deviceId } = this.draggingDevice;
+    const store = useGameStore.getState();
+    const targetU = this.getSlotAtPosition(this.mouseWorldY);
+    const isOverRack = this.isMouseOverRack();
+
+    if (source === "installed" && deviceId) {
+      // Dragging FROM rack — if dropped outside rack, remove device
+      if (!isOverRack) {
+        rpcClient.call("removeDevice", { deviceId }).catch(() => {});
+      }
+      // If dropped back on rack, just cancel (snap back)
+    } else if (targetU && this.isSlotFree(targetU) && store.openRackItemId && isOverRack) {
+      // Dragging TO rack — install
+      if (source === "carried") {
+        rpcClient
+          .call("installDevice", {
+            itemId,
+            rackItemId: store.openRackItemId,
+            slotU: targetU,
+          })
+          .catch(() => {});
+      } else {
+        rpcClient
+          .call("installDeviceFromStorage", {
+            itemId,
+            rackItemId: store.openRackItemId,
+            slotU: targetU,
+          })
+          .catch(() => {});
+      }
+    }
+
+    // Cleanup
+    this.draggingDevice.sprite.destroy();
+    this.dragGhost?.destroy();
+    this.dragGhost = null;
+    this.draggingDevice = null;
+    this.lastStateKey = "";
+  }
+
+  private isMouseOverRack(): boolean {
+    const rackLeft = RACK_X;
+    const rackRight = RACK_X + RACK.WIDTH;
+    const rackTop = RACK_Y;
+    const rackBottom = RACK_Y + RACK.HEIGHT + 40;
+    return (
+      this.mouseWorldX >= rackLeft &&
+      this.mouseWorldX <= rackRight &&
+      this.mouseWorldY >= rackTop &&
+      this.mouseWorldY <= rackBottom
+    );
   }
 }
