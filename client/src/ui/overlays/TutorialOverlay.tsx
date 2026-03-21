@@ -20,9 +20,9 @@ export function TutorialOverlay() {
     null;
 
   switch (currentObj.id) {
-    case "buy_router":
-    case "buy_switch":
-    case "buy_server":
+    case "install_router":
+    case "install_switch":
+    case "install_server":
       if (placingModel) {
         callout = {
           message: "Click an empty slot in the rack to place your device",
