@@ -143,6 +143,7 @@ export class WorldScene extends Phaser.Scene {
 
   private enterRoom(roomId: RoomId, world: WorldState) {
     this.currentRoom = roomId;
+    this.events.emit("closeShop");
 
     // Clear previous room objects
     for (const obj of this.roomObjects) {
