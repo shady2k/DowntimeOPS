@@ -5,7 +5,8 @@ export function InventoryHUD() {
   const activeView = useGameStore((s) => s.activeView);
   const state = useGameStore((s) => s.state);
   if (!state) return null;
-  if (activeView !== "world" && activeView !== "rack") return null;
+  // In rack view, RackWorkstation handles the economy display
+  if (activeView !== "world") return null;
 
   const { world, money } = state;
   const cs = world.cableStock;

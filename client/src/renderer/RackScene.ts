@@ -7,13 +7,15 @@ import { emitAudioEvent } from "./AudioEvents";
 import { getCableStyle, getCableExitX, drawCablePath, interpolateCablePath, getPulseColor } from "./CablePrefab";
 import { PerfMonitor } from "./PerfMonitor";
 
-// Layout
-const RACK_X = 370;
-const RACK_Y = 80;
+// Layout — rack anchored in left bay (58% of 960px viewport)
+const RACK_X = 50;
+const RACK_Y = 30;
+const BAY_WIDTH = 557; // left 58% of 960px logical viewport
 
 // Zoom bands (multiplied by DPR at runtime)
+// Tuned for the bay viewport (left 58% of screen)
 const ZOOM_BANDS = {
-  OVERVIEW: 0.55, // full rack visible
+  OVERVIEW: 0.55, // full rack visible in bay
   HALF: 1.0,      // ~21 U visible
   DEVICE: 1.6,    // ~7 U visible, device-level detail
   PORT: 2.5,      // ~3 U visible, port-level detail
@@ -155,8 +157,8 @@ export class RackScene extends Phaser.Scene {
   }
 
   create() {
-    // Opaque background color prevents other scenes from bleeding through
-    this.cameras.main.setBackgroundColor("#1a1410");
+    // Transparent background — workstation-bg.png is rendered by React behind the canvas
+    this.cameras.main.setBackgroundColor("rgba(0,0,0,0)");
 
     this.createLayers();
     this.createBackground();
@@ -276,12 +278,9 @@ export class RackScene extends Phaser.Scene {
   // ── Background ───────────────────────────────────────────────
 
   private createBackground() {
-    // Large solid rectangle to fully cover any scenes rendering beneath
-    const bg = this.add.graphics();
-    bg.fillStyle(0x1a1410, 1);
-    bg.fillRect(-500, -500, 2200, 2200);
-    bg.setDepth(DEPTH.BACKGROUND);
-    this.bgLayer.add(bg);
+    // Background is handled by the React RackWorkstation component
+    // (workstation-bg.png rendered as a CSS background behind the transparent canvas).
+    // No Phaser background needed — canvas is transparent.
   }
 
   // ── Rack frame ───────────────────────────────────────────────
@@ -338,10 +337,25 @@ export class RackScene extends Phaser.Scene {
     const cam = this.cameras.main;
     this.dpr = window.devicePixelRatio || 1;
     const rackTotalH = RACK.HEIGHT + 40; // slots + title + padding
-    cam.setBackgroundColor(0x1a1410);
+    cam.setBackgroundColor("rgba(0,0,0,0)");
     cam.setZoom(ZOOM_BANDS.OVERVIEW * this.dpr);
-    cam.setBounds(0, 0, 1200, rackTotalH + RACK_Y * 2);
-    cam.centerOn(RACK_X + RACK.WIDTH / 2, RACK_Y + rackTotalH / 2);
+
+    // Position camera so the rack aligns with the bay opening in the background art.
+    // The bay opening center is at ~23% of the viewport width.
+    // We need the rack center (world coords) to map to that screen position.
+    const zoom = ZOOM_BANDS.OVERVIEW * this.dpr;
+    const viewW = this.scale.width / zoom;
+    const viewH = this.scale.height / zoom;
+    const rackCenterX = RACK_X + RACK.WIDTH / 2;
+    const rackCenterY = RACK_Y + rackTotalH / 2;
+
+    // scrollX/Y so that rack center appears at 23% of viewport width, 48% of viewport height
+    const targetScreenXPct = 0.23;
+    const targetScreenYPct = 0.48;
+    cam.scrollX = rackCenterX - viewW * targetScreenXPct;
+    cam.scrollY = rackCenterY - viewH * targetScreenYPct;
+
+    cam.setBounds(-500, -500, 3000, 3000); // loose bounds for panning in work mode
   }
 
   private handleResize() {
@@ -1422,11 +1436,10 @@ export class RackScene extends Phaser.Scene {
 
     this.previewGraphics.lineStyle(2, PALETTE.highlight, 0.5);
 
-    const midX =
-      RACK_X +
-      RACK.WIDTH +
-      20 +
-      Math.abs(sourcePos.y - this.mouseWorldY) * 0.25;
+    const midX = Math.min(
+      RACK_X + RACK.WIDTH + 20 + Math.abs(sourcePos.y - this.mouseWorldY) * 0.25,
+      BAY_WIDTH - 20, // stay within bay
+    );
 
     this.previewGraphics.beginPath();
     this.previewGraphics.moveTo(sourcePos.x, sourcePos.y);
@@ -1618,7 +1631,7 @@ export class RackScene extends Phaser.Scene {
     if (modelCounts.size === 0) return;
 
     // Workbench area: left of rack, compact grid
-    const benchX = RACK_X - 100;
+    const benchX = RACK_X + RACK.WIDTH + 20; // Right of rack (temporary until React tray replaces this)
     const benchStartY = RACK_Y + 60;
     const itemSpacing = 44;
 

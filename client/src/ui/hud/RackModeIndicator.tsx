@@ -8,6 +8,8 @@ export function RackModeIndicator() {
   const state = useGameStore((s) => s.state);
   const enterOverviewMode = useGameStore((s) => s.enterOverviewMode);
 
+  // RackWorkstation now handles the mode indicator
+  return null;
   if (activeView !== "rack") return null;
 
   const isWork = rackMode === "work";

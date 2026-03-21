@@ -83,12 +83,15 @@ export function getPulseColor(utilization: number): number {
  * Compute the L-shaped cable path segments.
  * Returns the exit X coordinate used for the vertical segment.
  */
+/** Max X for cable routing — stay within the bay zone */
+const CABLE_EXIT_MAX_X = 530;
+
 export function getCableExitX(
   rackRight: number,
   yA: number,
   yB: number,
 ): number {
-  return rackRight + 20 + Math.abs(yA - yB) * 0.25;
+  return Math.min(rackRight + 20 + Math.abs(yA - yB) * 0.25, CABLE_EXIT_MAX_X);
 }
 
 /**

@@ -20,7 +20,7 @@ export function PhaserGame() {
     gameRef.current = new Phaser.Game({
       type: Phaser.AUTO,
       parent: containerRef.current,
-      backgroundColor: "#1e1814",
+      transparent: true, // Individual scenes set their own background; RackScene is transparent
       scene: [PreloadScene, WorldScene, UIScene, RackScene],
       physics: {
         default: "arcade",
@@ -75,7 +75,7 @@ export function PhaserGame() {
   return (
     <div
       ref={containerRef}
-      style={{ width: "100%", height: "100%", overflow: "hidden" }}
+      style={{ width: "100%", height: "100%", overflow: "hidden", position: "relative", zIndex: 1 }}
     />
   );
 }
