@@ -11,6 +11,8 @@ export type {
   SetSpeedParams,
   SaveGameParams,
   LoadGameParams,
+  DeleteSaveParams,
+  ListSavesResult,
   PlaceDeviceResult,
   ConnectPortsResult,
   StartTracerResult,
@@ -21,6 +23,8 @@ export type {
 } from "./methods";
 
 export type {
+  SnapshotNotification,
+  NoSessionNotification,
   StateDiffNotification,
   AlertNotification,
   TracerStepNotification,

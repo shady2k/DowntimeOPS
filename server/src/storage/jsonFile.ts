@@ -2,7 +2,7 @@ import type { GameState, GameStorage, SaveInfo } from "@downtime-ops/shared";
 import { join } from "path";
 import { mkdir } from "fs/promises";
 
-const SAVES_DIR = join(import.meta.dir, "../../saves");
+const SAVES_DIR = join(import.meta.dir, "../../../data/saves");
 
 export class JsonFileStorage implements GameStorage {
   private dir: string;
@@ -18,11 +18,25 @@ export class JsonFileStorage implements GameStorage {
   async save(saveId: string, state: GameState): Promise<void> {
     await mkdir(this.dir, { recursive: true });
 
+    // Preserve createdAt from existing save if overwriting
+    let createdAt = new Date().toISOString();
+    const file = Bun.file(this.filePath(saveId));
+    if (await file.exists()) {
+      try {
+        const existing = await file.json();
+        if (existing.meta?.createdAt) {
+          createdAt = existing.meta.createdAt;
+        }
+      } catch {
+        // Corrupt file, use new createdAt
+      }
+    }
+
     const saveData = {
       meta: {
         id: saveId,
         name: saveId,
-        createdAt: new Date().toISOString(),
+        createdAt,
         updatedAt: new Date().toISOString(),
         phase: state.phase,
         money: state.money,

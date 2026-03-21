@@ -4,6 +4,7 @@ import type {
   JsonRpcNotification,
   TracerPacket,
   GameState,
+  SaveInfo,
 } from "@downtime-ops/shared";
 import {
   applyAction,
@@ -17,15 +18,31 @@ import pino from "pino";
 const log = pino({ name: "rpc" });
 
 export interface GameServer {
-  getState(): GameState;
+  getState(): GameState | null;
   setState(state: GameState): void;
   broadcast(notification: JsonRpcNotification): void;
   saveGame(name: string): Promise<void>;
   loadGame(saveId: string): Promise<void>;
+  newGame(): void;
+  listSaves(): Promise<SaveInfo[]>;
+  deleteSave(saveId: string): Promise<void>;
+  exitToMenu(): Promise<void>;
 }
 
 // Active tracers stored outside game state
 const activeTracers = new Map<string, TracerPacket>();
+
+export function clearTracers() {
+  activeTracers.clear();
+}
+
+function requireSession(server: GameServer, id: string | number): GameState | JsonRpcResponse {
+  const state = server.getState();
+  if (!state) {
+    return rpcError(id, -32004, "No active session");
+  }
+  return state;
+}
 
 export function handleRpcRequest(
   request: JsonRpcRequest,
@@ -34,6 +51,50 @@ export function handleRpcRequest(
   const { method, params, id } = request;
 
   try {
+    // --- Session management (no active session required) ---
+
+    switch (method) {
+      case "newGame": {
+        server.newGame();
+        return rpcSuccess(id, null);
+      }
+
+      case "listSaves": {
+        return server.listSaves().then(
+          (saves) => rpcSuccess(id, { saves }),
+          (err) => rpcError(id, -32002, String(err)),
+        );
+      }
+
+      case "deleteSave": {
+        const saveId = (params as Record<string, unknown>).saveId as string;
+        return server.deleteSave(saveId).then(
+          () => rpcSuccess(id, null),
+          (err) => rpcError(id, -32002, String(err)),
+        );
+      }
+
+      case "loadGame": {
+        const saveId = (params as Record<string, unknown>).saveId as string;
+        return server.loadGame(saveId).then(
+          () => rpcSuccess(id, null),
+          (err) => rpcError(id, -32003, String(err)),
+        );
+      }
+
+      case "exitToMenu": {
+        return server.exitToMenu().then(
+          () => rpcSuccess(id, null),
+          (err) => rpcError(id, -32002, String(err)),
+        );
+      }
+    }
+
+    // --- All remaining methods require an active session ---
+
+    const sessionCheck = requireSession(server, id);
+    if ("error" in sessionCheck) return sessionCheck;
+
     switch (method) {
       case "placeDevice":
         return handleAction(server, id, {
@@ -148,9 +209,10 @@ export function handleRpcRequest(
         });
 
       case "buyCartItems": {
+        const state = server.getState()!;
         const p = params as Record<string, unknown>;
         const cartItems = p.items as Array<{ listingId: string; quantity: number }>;
-        const result = buyCartItems(server.getState(), cartItems);
+        const result = buyCartItems(state, cartItems);
         if (result.error) {
           return rpcError(id, -32000, result.error);
         }
@@ -171,8 +233,9 @@ export function handleRpcRequest(
         return rpcSuccess(id, { state: server.getState() });
 
       case "startTracer": {
+        const state = server.getState()!;
         const p = params as Record<string, unknown>;
-        const result = createTracer(server.getState(), {
+        const result = createTracer(state, {
           srcIp: p.srcIp as string,
           dstIp: p.dstIp as string,
           protocol: (p.protocol as string) || "tcp",
@@ -184,13 +247,14 @@ export function handleRpcRequest(
       }
 
       case "stepTracer": {
+        const state = server.getState()!;
         const tracerId = (params as Record<string, unknown>)
           .tracerId as string;
         const packet = activeTracers.get(tracerId);
         if (!packet) {
           return rpcError(id, -32001, `Tracer ${tracerId} not found`);
         }
-        const result = advanceTracer(server.getState(), packet);
+        const result = advanceTracer(state, packet);
         activeTracers.set(tracerId, result.packet);
         if (
           result.packet.status === "delivered" ||
@@ -210,14 +274,6 @@ export function handleRpcRequest(
         );
       }
 
-      case "loadGame": {
-        const saveId = (params as Record<string, unknown>).saveId as string;
-        return server.loadGame(saveId).then(
-          () => rpcSuccess(id, { state: server.getState() }),
-          (err) => rpcError(id, -32003, String(err)),
-        );
-      }
-
       default:
         return rpcError(id, -32601, `Method not found: ${method}`);
     }
@@ -232,7 +288,7 @@ function handleAction(
   id: string | number,
   action: Action,
 ): JsonRpcResponse {
-  const state = server.getState();
+  const state = server.getState()!;
   const result = applyAction(state, action);
 
   if (result.error) {

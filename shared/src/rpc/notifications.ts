@@ -1,4 +1,15 @@
+import type { GameState } from "../types/GameState";
 import type { PacketHop } from "../types/TracerPacket";
+
+export interface SnapshotNotification {
+  method: "snapshot";
+  params: { state: GameState };
+}
+
+export interface NoSessionNotification {
+  method: "noSession";
+  params: Record<string, never>;
+}
 
 export interface StateDiffNotification {
   method: "stateDiff";
@@ -28,6 +39,8 @@ export interface TracerStepNotification {
 }
 
 export type ServerNotification =
+  | SnapshotNotification
+  | NoSessionNotification
   | StateDiffNotification
   | AlertNotification
   | TracerStepNotification;

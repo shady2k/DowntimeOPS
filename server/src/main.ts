@@ -5,7 +5,7 @@ import type {
 } from "@downtime-ops/shared";
 import pino from "pino";
 import { createInitialState, applyAction, BALANCE } from "./engine";
-import { handleRpcRequest, type GameServer } from "./rpc/handler";
+import { handleRpcRequest, clearTracers, type GameServer } from "./rpc/handler";
 import { diffStates, isDiffEmpty } from "./sync/differ";
 import { hashState } from "./sync/hasher";
 import { JsonFileStorage } from "./storage/jsonFile";
@@ -14,14 +14,47 @@ import type { ServerWebSocket } from "bun";
 const log = pino({ name: "downtime-ops" });
 const storage = new JsonFileStorage();
 
-// --- Game state ---
+// --- Game state (null = no active session) ---
 
-let gameState: GameState = createInitialState();
-let previousState: GameState = gameState;
+let gameState: GameState | null = null;
+let previousState: GameState | null = null;
 
 // --- Connected clients ---
 
 const clients = new Set<ServerWebSocket<unknown>>();
+
+// --- Session helpers ---
+
+function resetSessionState() {
+  previousState = null;
+  ticksSinceHash = 0;
+  clearTracers();
+}
+
+function broadcastSnapshot() {
+  if (!gameState) return;
+  const notification: JsonRpcNotification = {
+    jsonrpc: "2.0",
+    method: "snapshot",
+    params: { state: gameState } as unknown as Record<string, unknown>,
+  };
+  const msg = JSON.stringify(notification);
+  for (const ws of clients) {
+    ws.send(msg);
+  }
+}
+
+function broadcastNoSession() {
+  const notification: JsonRpcNotification = {
+    jsonrpc: "2.0",
+    method: "noSession",
+    params: {} as Record<string, unknown>,
+  };
+  const msg = JSON.stringify(notification);
+  for (const ws of clients) {
+    ws.send(msg);
+  }
+}
 
 // --- GameServer interface for RPC handler ---
 
@@ -39,13 +72,48 @@ const gameServer: GameServer = {
     }
   },
   saveGame: async (name: string) => {
+    if (!gameState) throw new Error("No active session");
     await storage.save(name, gameState);
     log.info({ name }, "Game saved");
   },
   loadGame: async (saveId: string) => {
+    stopTickLoop();
+    resetSessionState();
     gameState = await storage.load(saveId);
     previousState = gameState;
     log.info({ saveId }, "Game loaded");
+    broadcastSnapshot();
+    startTickLoop();
+  },
+  newGame: () => {
+    stopTickLoop();
+    resetSessionState();
+    gameState = createInitialState();
+    previousState = gameState;
+    log.info("New game started");
+    broadcastSnapshot();
+    startTickLoop();
+  },
+  listSaves: async () => {
+    const saves = await storage.list();
+    saves.sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));
+    return saves;
+  },
+  deleteSave: async (saveId: string) => {
+    await storage.delete(saveId);
+    log.info({ saveId }, "Save deleted");
+  },
+  exitToMenu: async () => {
+    if (gameState) {
+      await storage.save("autosave", gameState);
+      log.info("Auto-saved before exit to menu");
+    }
+    stopTickLoop();
+    resetSessionState();
+    gameState = null;
+    previousState = null;
+    broadcastNoSession();
+    log.info("Exited to menu");
   },
 };
 
@@ -55,6 +123,8 @@ let ticksSinceHash = 0;
 const HASH_INTERVAL = 10;
 
 function broadcastDiff() {
+  if (!gameState || !previousState) return;
+
   const diff = diffStates(previousState, gameState);
   if (isDiffEmpty(diff)) return;
 
@@ -84,9 +154,10 @@ let tickTimer: ReturnType<typeof setInterval> | null = null;
 
 function startTickLoop() {
   if (tickTimer) return;
+  if (!gameState) return;
 
   tickTimer = setInterval(() => {
-    if (gameState.speed === 0) return;
+    if (!gameState || gameState.speed === 0) return;
 
     // Process multiple ticks based on speed
     for (let i = 0; i < gameState.speed; i++) {
@@ -122,13 +193,24 @@ const server = Bun.serve({
       clients.add(ws);
       log.info({ clientCount: clients.size }, "Client connected");
 
-      // Send full snapshot on connect
-      const snapshot: JsonRpcNotification = {
-        jsonrpc: "2.0",
-        method: "snapshot",
-        params: { state: gameState } as unknown as Record<string, unknown>,
-      };
-      ws.send(JSON.stringify(snapshot));
+      if (gameState) {
+        // Active session: send snapshot and resume tick loop
+        const snapshot: JsonRpcNotification = {
+          jsonrpc: "2.0",
+          method: "snapshot",
+          params: { state: gameState } as unknown as Record<string, unknown>,
+        };
+        ws.send(JSON.stringify(snapshot));
+        startTickLoop();
+      } else {
+        // No session: tell client to show menu
+        const noSession: JsonRpcNotification = {
+          jsonrpc: "2.0",
+          method: "noSession",
+          params: {} as Record<string, unknown>,
+        };
+        ws.send(JSON.stringify(noSession));
+      }
     },
 
     async message(ws, message) {
@@ -167,13 +249,16 @@ const server = Bun.serve({
       log.info({ clientCount: clients.size }, "Client disconnected");
 
       if (clients.size === 0) {
+        // Auto-save and pause when last client disconnects
+        if (gameState) {
+          storage.save("autosave", gameState).catch((err) => {
+            log.error({ err }, "Auto-save on disconnect failed");
+          });
+        }
         stopTickLoop();
       }
     },
   },
 });
-
-// Start tick loop immediately
-startTickLoop();
 
 log.info({ port: server.port }, "DowntimeOPS server running");

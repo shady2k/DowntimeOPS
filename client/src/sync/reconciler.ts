@@ -3,8 +3,11 @@ import { useGameStore } from "../store/gameStore";
 import { rpcClient } from "../rpc/client";
 
 let localHash: string | null = null;
+let initialized = false;
 
 export function setupReconciler() {
+  if (initialized) return;
+  initialized = true;
   const store = useGameStore.getState();
 
   rpcClient.onConnection((connected) => {
@@ -18,6 +21,12 @@ export function setupReconciler() {
       case "snapshot": {
         const p = params as { state: GameState };
         useGameStore.getState().applySnapshot(p.state);
+        localHash = null;
+        break;
+      }
+
+      case "noSession": {
+        useGameStore.getState().returnToMenu();
         localHash = null;
         break;
       }

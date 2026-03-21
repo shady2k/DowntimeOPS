@@ -3,17 +3,31 @@ import { setupReconciler } from "./sync/reconciler";
 import { useGameStore } from "./store/gameStore";
 import { PhaserGame } from "./renderer/PhaserGame";
 import { ShopBrowser } from "./ui/shop/ShopBrowser";
+import { MainMenu } from "./ui/MainMenu";
 import { THEME } from "./ui/theme";
 
 function App() {
-  const connected = useGameStore((s) => s.connected);
-  const state = useGameStore((s) => s.state);
+  const appMode = useGameStore((s) => s.appMode);
+  const pauseMenuOpen = useGameStore((s) => s.pauseMenuOpen);
+  const togglePauseMenu = useGameStore((s) => s.togglePauseMenu);
 
   useEffect(() => {
     setupReconciler();
   }, []);
 
-  if (!connected || !state) {
+  // ESC toggles menu
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === "Escape" && appMode === "playing") {
+        e.preventDefault();
+        togglePauseMenu();
+      }
+    };
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [appMode, togglePauseMenu]);
+
+  if (appMode === "connecting") {
     return (
       <div
         style={{
@@ -29,18 +43,23 @@ function App() {
         <div style={{ textAlign: "center" }}>
           <h1 style={{ color: THEME.colors.accent, fontWeight: 800, fontSize: 28, marginBottom: 12 }}>DowntimeOPS</h1>
           <p style={{ color: THEME.colors.textMuted, fontSize: 14 }}>
-            {connected ? "Loading game state..." : "Connecting to server..."}
+            Connecting to server...
           </p>
         </div>
       </div>
     );
   }
 
-  // Full-screen Phaser with React overlays
+  if (appMode === "menu") {
+    return <MainMenu />;
+  }
+
+  // appMode === "playing"
   return (
     <div style={{ width: "100vw", height: "100vh", overflow: "hidden", position: "relative" }}>
       <PhaserGame />
       <ShopBrowser />
+      {pauseMenuOpen && <MainMenu />}
     </div>
   );
 }

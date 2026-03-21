@@ -1,6 +1,8 @@
 import { create } from "zustand";
 import type { GameState } from "@downtime-ops/shared";
 
+export type AppMode = "connecting" | "menu" | "playing";
+
 export interface CablingSource {
   deviceId: string;
   portIndex: number;
@@ -10,11 +12,15 @@ export interface GameStore {
   // Server-synced state
   state: GameState | null;
   connected: boolean;
+  appMode: AppMode;
 
   // Ephemeral UI state
   selectedDeviceId: string | null;
   selectedPortId: string | null;
   activeView: "rack" | "room" | "trace" | "map" | "world" | "shop";
+
+  // Pause menu
+  pauseMenuOpen: boolean;
 
   // Rack interaction state
   cablingFrom: CablingSource | null;
@@ -26,6 +32,8 @@ export interface GameStore {
   applyDiff: (diff: Record<string, unknown>) => void;
   applySnapshot: (snapshot: GameState) => void;
   setConnected: (connected: boolean) => void;
+  returnToMenu: () => void;
+  togglePauseMenu: () => void;
 
   // UI actions
   selectDevice: (deviceId: string | null) => void;
@@ -49,11 +57,15 @@ export const useGameStore = create<GameStore>((set) => ({
   // Server-synced state
   state: null,
   connected: false,
+  appMode: "connecting",
 
   // Ephemeral UI state
   selectedDeviceId: null,
   selectedPortId: null,
   activeView: "world",
+
+  // Pause menu
+  pauseMenuOpen: false,
 
   // Rack interaction state
   cablingFrom: null,
@@ -68,9 +80,35 @@ export const useGameStore = create<GameStore>((set) => ({
       return { state: { ...store.state, ...diff } as GameState };
     }),
 
-  applySnapshot: (snapshot) => set({ state: snapshot }),
+  applySnapshot: (snapshot) => set({ state: snapshot, appMode: "playing", pauseMenuOpen: false }),
 
-  setConnected: (connected) => set({ connected }),
+  setConnected: (connected) =>
+    set(() => {
+      if (connected) {
+        // Connected — stay on "connecting" until server sends snapshot or noSession
+        return { connected, appMode: "connecting" };
+      }
+      // Disconnected — show connecting screen
+      return { connected, appMode: "connecting" };
+    }),
+
+  returnToMenu: () =>
+    set({
+      state: null,
+      appMode: "menu",
+      pauseMenuOpen: false,
+      // Reset all ephemeral UI state
+      selectedDeviceId: null,
+      selectedPortId: null,
+      activeView: "world",
+      cablingFrom: null,
+      placingModel: null,
+      selectedClientId: null,
+      highlightedAlertId: null,
+    }),
+
+  togglePauseMenu: () =>
+    set((store) => ({ pauseMenuOpen: !store.pauseMenuOpen })),
 
   // UI actions
   selectDevice: (deviceId) =>

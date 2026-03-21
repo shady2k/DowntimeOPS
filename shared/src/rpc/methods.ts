@@ -1,4 +1,5 @@
 import type { GameState } from "../types/GameState";
+import type { SaveInfo } from "../types/Common";
 import type { CableType } from "../types/Link";
 import type { TracerPacket } from "../types/TracerPacket";
 import type { Vec2, Facing } from "../types/World";
@@ -59,6 +60,14 @@ export interface SaveGameParams {
 
 export interface LoadGameParams {
   saveId: string;
+}
+
+export interface DeleteSaveParams {
+  saveId: string;
+}
+
+export interface ListSavesResult {
+  saves: SaveInfo[];
 }
 
 // --- World action params ---
@@ -151,6 +160,10 @@ export interface RpcMethods {
   getSnapshot: { params: void; result: GetSnapshotResult };
   saveGame: { params: SaveGameParams; result: void };
   loadGame: { params: LoadGameParams; result: void };
+  newGame: { params: void; result: void };
+  listSaves: { params: void; result: ListSavesResult };
+  deleteSave: { params: DeleteSaveParams; result: void };
+  exitToMenu: { params: void; result: void };
 
   // World actions
   movePlayer: { params: MovePlayerParams; result: void };
