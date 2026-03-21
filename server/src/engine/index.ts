@@ -184,6 +184,7 @@ export function applyAction(state: GameState, action: Action): EngineResult {
     case "PICKUP_ITEM":
     case "DROP_ITEM":
     case "PLACE_RACK":
+    case "PICKUP_FROM_STORAGE":
       return applyWorldAction(state, action);
 
     case "INSTALL_DEVICE": {

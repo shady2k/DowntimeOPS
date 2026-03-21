@@ -1,6 +1,5 @@
 import Phaser from "phaser";
 import { useGameStore, type GameStore } from "../../store/gameStore";
-import { rpcClient } from "../../rpc/client";
 
 /**
  * UIScene — screen-space HUD overlay.
@@ -11,10 +10,6 @@ export class UIScene extends Phaser.Scene {
   private moneyText!: Phaser.GameObjects.Text;
   private roomText!: Phaser.GameObjects.Text;
   private objectiveText!: Phaser.GameObjects.Text;
-
-  // Shop panel
-  private shopPanel!: Phaser.GameObjects.Container;
-  private shopVisible = false;
 
   private unsubscribe?: () => void;
 
@@ -51,25 +46,11 @@ export class UIScene extends Phaser.Scene {
       wordWrap: { width: 300 },
     });
 
-    // --- Shop panel (hidden by default) ---
-    this.shopPanel = this.createShopPanel();
-    this.shopPanel.setVisible(false);
-
     // Controls hint
     this.add.text(width - 180, height - 16, "WASD: Move  |  E: Interact", {
       fontSize: "8px",
       fontFamily: "monospace",
       color: "#706050",
-    });
-
-    // Listen for shop open/close events from WorldScene
-    const worldScene = this.scene.get("WorldScene");
-    worldScene.events.on("openShop", () => this.openShop());
-    worldScene.events.on("closeShop", () => this.closeShop());
-
-    // ESC closes shop
-    this.input.keyboard!.on("keydown-ESC", () => {
-      if (this.shopVisible) this.closeShop();
     });
 
     // Subscribe to store
@@ -79,7 +60,6 @@ export class UIScene extends Phaser.Scene {
 
     // Initial update
     this.updateHUD(useGameStore.getState());
-
   }
 
   private updateHUD(store: GameStore) {
@@ -110,117 +90,6 @@ export class UIScene extends Phaser.Scene {
         this.objectiveText.setText(`📋 ${currentObj.title}`);
       }
     }
-
-    // Update shop listings if visible
-    if (this.shopVisible) {
-      this.refreshShopListings();
-    }
-  }
-
-  private createShopPanel(): Phaser.GameObjects.Container {
-    const { width, height } = this.cameras.main;
-    const panelW = 320;
-    const panelH = 400;
-    const panelX = width / 2;
-    const panelY = height / 2;
-
-    const container = this.add.container(panelX, panelY);
-
-    // Background
-    const bg = this.add.rectangle(0, 0, panelW, panelH, 0x1e1814, 0.95);
-    bg.setStrokeStyle(2, 0x6a5540);
-    container.add(bg);
-
-    // Title
-    const title = this.add.text(0, -panelH / 2 + 20, "EQUIPMENT SHOP", {
-      fontSize: "18px",
-      color: "#e8a840",
-      fontStyle: "bold",
-    }).setOrigin(0.5);
-    container.add(title);
-
-    // Close button
-    const closeBtn = this.add.text(
-      panelW / 2 - 20, -panelH / 2 + 10,
-      "X",
-      { fontSize: "18px", color: "#d45a4a" },
-    ).setOrigin(0.5).setInteractive({ useHandCursor: true });
-    closeBtn.on("pointerdown", () => this.closeShop());
-    container.add(closeBtn);
-
-    // Listing items will be added dynamically
-    container.setDepth(200);
-    return container;
-  }
-
-  private refreshShopListings() {
-    const state = useGameStore.getState().state;
-    if (!state?.world?.shop) return;
-
-    // Remove old listing items (keep bg + title + close = first 3)
-    const toDestroy: Phaser.GameObjects.GameObject[] = [];
-    for (let i = this.shopPanel.length - 1; i >= 3; i--) {
-      toDestroy.push(this.shopPanel.getAt(i));
-    }
-    for (const child of toDestroy) {
-      this.shopPanel.remove(child, true);
-    }
-
-    const listings = Object.values(state.world.shop.listings);
-    let y = -120;
-
-    for (const listing of listings) {
-      const canAfford = state.money >= listing.price;
-
-      // Use make.text (not add.text) to avoid adding to scene display list
-      const nameText = this.make.text({
-        x: -130, y,
-        text: listing.name,
-        style: { fontSize: "14px", color: canAfford ? "#f0e0cc" : "#706050" },
-        add: false,
-      });
-
-      const priceText = this.make.text({
-        x: 100, y,
-        text: `$${listing.price}`,
-        style: { fontSize: "14px", color: canAfford ? "#60c070" : "#d45a4a", fontStyle: "bold" },
-        add: false,
-      });
-
-      const buyBtn = this.make.text({
-        x: 100, y: y + 18,
-        text: canAfford ? "[BUY]" : "[---]",
-        style: { fontSize: "12px", color: canAfford ? "#e8a840" : "#504840" },
-        add: false,
-      });
-
-      if (canAfford) {
-        buyBtn.setInteractive({ useHandCursor: true });
-        const listingId = listing.id;
-        buyBtn.on("pointerdown", () => {
-          rpcClient.call("buyItem", { listingId });
-          this.closeShop();
-        });
-        buyBtn.on("pointerover", () => buyBtn.setColor("#ffffff"));
-        buyBtn.on("pointerout", () => buyBtn.setColor("#e8a840"));
-      }
-
-      this.shopPanel.add([nameText, priceText, buyBtn]);
-      y += 50;
-    }
-  }
-
-  private openShop() {
-    if (this.shopVisible) return;
-    this.shopVisible = true;
-    this.shopPanel.setVisible(true);
-    this.refreshShopListings();
-  }
-
-  private closeShop() {
-    if (!this.shopVisible) return;
-    this.shopVisible = false;
-    this.shopPanel.setVisible(false);
   }
 
   destroy() {

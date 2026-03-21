@@ -1,3 +1,6 @@
+import type { DeviceType } from "./Device";
+import type { PortType } from "./Port";
+
 // --- Spatial primitives ---
 
 export interface Vec2 {
@@ -122,11 +125,24 @@ export interface ItemInstance {
 
 // --- Shop ---
 
+export interface ShopListingSpecs {
+  type: DeviceType;
+  powerDrawWatts: number;
+  heatOutput: number;
+  uHeight: number;
+  ports: Array<{ type: PortType; count: number }>;
+  /** Package box dimensions in pixels for storage rendering */
+  packageSize: { w: number; h: number };
+}
+
 export interface ShopListing {
   id: string;
   model: string;
   itemKind: ItemKind;
   name: string;
+  brand: string;
+  description: string;
+  specs: ShopListingSpecs;
   price: number;
   /** null = unlimited stock */
   stock: number | null;

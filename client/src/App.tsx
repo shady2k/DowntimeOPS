@@ -2,6 +2,7 @@ import { useEffect } from "react";
 import { setupReconciler } from "./sync/reconciler";
 import { useGameStore } from "./store/gameStore";
 import { PhaserGame } from "./renderer/PhaserGame";
+import { ShopBrowser } from "./ui/shop/ShopBrowser";
 import { THEME } from "./ui/theme";
 
 function App() {
@@ -35,10 +36,11 @@ function App() {
     );
   }
 
-  // Full-screen Phaser — all UI is now in Phaser scenes
+  // Full-screen Phaser with React overlays
   return (
-    <div style={{ width: "100vw", height: "100vh", overflow: "hidden" }}>
+    <div style={{ width: "100vw", height: "100vh", overflow: "hidden", position: "relative" }}>
       <PhaserGame />
+      <ShopBrowser />
     </div>
   );
 }

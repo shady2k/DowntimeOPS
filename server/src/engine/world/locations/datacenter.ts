@@ -11,7 +11,7 @@ export const DATACENTER_LAYOUT = {
 /** Rack placement grid config */
 const RACK_COLS = 3;
 const RACK_ROWS = 2;
-const RACK_START_X = 22; // right side — server floor area
+const RACK_START_X = 20; // server floor area, right of staff desk
 const RACK_START_Y = 5;
 const RACK_SPACING_X = 5;
 const RACK_SPACING_Y = 8;

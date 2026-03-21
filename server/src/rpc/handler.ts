@@ -11,6 +11,7 @@ import {
   advanceTracer,
   type Action,
 } from "../engine";
+import { buyCartItems } from "../engine/world/worldActions";
 import pino from "pino";
 
 const log = pino({ name: "rpc" });
@@ -144,6 +145,26 @@ export function handleRpcRequest(
           itemId: (params as Record<string, unknown>).itemId as string,
           rackItemId: (params as Record<string, unknown>).rackItemId as string,
           slotU: (params as Record<string, unknown>).slotU as number,
+        });
+
+      case "buyCartItems": {
+        const p = params as Record<string, unknown>;
+        const cartItems = p.items as Array<{ listingId: string; quantity: number }>;
+        const result = buyCartItems(server.getState(), cartItems);
+        if (result.error) {
+          return rpcError(id, -32000, result.error);
+        }
+        server.setState(result.state);
+        return rpcSuccess(id, {
+          purchasedItemIds: result.purchasedItemIds,
+          totalCost: result.totalCost,
+        });
+      }
+
+      case "pickupFromStorage":
+        return handleAction(server, id, {
+          type: "PICKUP_FROM_STORAGE",
+          shelfId: (params as Record<string, unknown>).shelfId as string,
         });
 
       case "getSnapshot":

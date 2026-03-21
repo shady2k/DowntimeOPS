@@ -33,6 +33,7 @@ export type {
   ItemKind,
   ItemState,
   ItemInstance,
+  ShopListingSpecs,
   ShopListing,
   ShopState,
   StoragePackage,

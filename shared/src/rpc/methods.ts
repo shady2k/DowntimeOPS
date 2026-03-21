@@ -72,6 +72,10 @@ export interface EnterDoorParams {
   interactableId: string;
 }
 
+export interface EdgeExitParams {
+  side: "left" | "right";
+}
+
 export interface BuyItemParams {
   listingId: string;
 }
@@ -93,6 +97,14 @@ export interface InstallDeviceWorldParams {
   itemId: string;
   rackItemId: string;
   slotU: number;
+}
+
+export interface BuyCartItemsParams {
+  items: Array<{ listingId: string; quantity: number }>;
+}
+
+export interface PickupFromStorageParams {
+  shelfId: string;
 }
 
 // --- Result types ---
@@ -117,6 +129,11 @@ export interface GetSnapshotResult {
   state: GameState;
 }
 
+export interface BuyCartItemsResult {
+  purchasedItemIds: string[];
+  totalCost: number;
+}
+
 // --- Method map for type-safe dispatch ---
 
 export interface RpcMethods {
@@ -138,11 +155,14 @@ export interface RpcMethods {
   // World actions
   movePlayer: { params: MovePlayerParams; result: void };
   enterDoor: { params: EnterDoorParams; result: void };
+  edgeExit: { params: EdgeExitParams; result: void };
   buyItem: { params: BuyItemParams; result: void };
   pickupItem: { params: PickupItemParams; result: void };
   dropItem: { params: DropItemParams; result: void };
   placeRack: { params: PlaceRackParams; result: void };
   installDevice: { params: InstallDeviceWorldParams; result: void };
+  buyCartItems: { params: BuyCartItemsParams; result: BuyCartItemsResult };
+  pickupFromStorage: { params: PickupFromStorageParams; result: void };
 }
 
 export type RpcMethodName = keyof RpcMethods;

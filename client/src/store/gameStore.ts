@@ -32,6 +32,10 @@ export interface GameStore {
   selectPort: (portId: string | null) => void;
   setView: (view: GameStore["activeView"]) => void;
 
+  // Shop actions
+  openShop: () => void;
+  closeShop: () => void;
+
   // Rack interaction actions
   startCabling: (source: CablingSource) => void;
   cancelCabling: () => void;
@@ -75,6 +79,10 @@ export const useGameStore = create<GameStore>((set) => ({
   selectPort: (portId) => set({ selectedPortId: portId }),
 
   setView: (view) => set({ activeView: view }),
+
+  // Shop actions
+  openShop: () => set({ activeView: "shop" }),
+  closeShop: () => set({ activeView: "world" }),
 
   // Rack interaction actions
   startCabling: (source) =>

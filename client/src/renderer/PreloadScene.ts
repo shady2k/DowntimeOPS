@@ -31,6 +31,7 @@ export class PreloadScene extends Phaser.Scene {
 
     // Rack
     this.load.image("rack-frame", "assets/racks/rack-frame-42u.png");
+    this.load.image("rack-empty", "assets/racks/rack-42u-empty.png");
 
     // Devices
     this.load.image("device-server", "assets/devices/device-server-1u.png");

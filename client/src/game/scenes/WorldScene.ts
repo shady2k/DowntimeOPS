@@ -143,7 +143,7 @@ export class WorldScene extends Phaser.Scene {
 
   private enterRoom(roomId: RoomId, world: WorldState) {
     this.currentRoom = roomId;
-    this.events.emit("closeShop");
+    useGameStore.getState().closeShop();
 
     // Clear previous room objects
     for (const obj of this.roomObjects) {
@@ -167,11 +167,72 @@ export class WorldScene extends Phaser.Scene {
     this.playerSprite.setScale(render.playerScale / 580);
     this.playerSprite.setOrigin(0.5, 0.85);
 
+    // Draw placement zone outlines
+    this.drawPlacementZones(world);
+
     // Build visual hints from server interactables
     this.buildInteractableHints(world);
 
     // Sync items for this room
     this.syncWorldItems(world);
+  }
+
+  private drawPlacementZones(world: WorldState) {
+    const room = world.rooms[this.currentRoom];
+    if (!room) return;
+
+    const roomWidthPx = room.widthTiles * 32;
+    const roomHeightPx = room.heightTiles * 32;
+
+    for (const zone of Object.values(room.placementZones)) {
+      if (zone.kind !== "rack_slot") continue;
+      if (zone.occupiedByItemId) continue; // don't draw under placed racks
+
+      const screenX = (zone.position.x / roomWidthPx) * GAME_W;
+      const screenY = (zone.position.y / roomHeightPx) * GAME_H;
+      const zoneW = (zone.size.w / roomWidthPx) * GAME_W;
+      const zoneH = (zone.size.h / roomHeightPx) * GAME_H;
+
+      const g = this.add.graphics();
+      g.lineStyle(1, 0x4a6a8a, 0.4);
+
+      // Draw dashed rectangle outline
+      const x1 = screenX - zoneW / 2;
+      const y1 = screenY - zoneH / 2;
+      const dashLen = 6;
+      const gapLen = 4;
+      this.drawDashedRect(g, x1, y1, zoneW, zoneH, dashLen, gapLen);
+
+      g.setDepth(5);
+      this.roomObjects.push(g);
+    }
+  }
+
+  private drawDashedRect(g: Phaser.GameObjects.Graphics, x: number, y: number, w: number, h: number, dash: number, gap: number) {
+    const sides = [
+      { sx: x, sy: y, ex: x + w, ey: y },
+      { sx: x + w, sy: y, ex: x + w, ey: y + h },
+      { sx: x + w, sy: y + h, ex: x, ey: y + h },
+      { sx: x, sy: y + h, ex: x, ey: y },
+    ];
+    for (const { sx, sy, ex, ey } of sides) {
+      const len = Math.sqrt((ex - sx) ** 2 + (ey - sy) ** 2);
+      const dx = (ex - sx) / len;
+      const dy = (ey - sy) / len;
+      let d = 0;
+      let drawing = true;
+      while (d < len) {
+        const segLen = Math.min(drawing ? dash : gap, len - d);
+        if (drawing) {
+          g.beginPath();
+          g.moveTo(sx + dx * d, sy + dy * d);
+          g.lineTo(sx + dx * (d + segLen), sy + dy * (d + segLen));
+          g.strokePath();
+        }
+        d += segLen;
+        drawing = !drawing;
+      }
+    }
   }
 
   private buildInteractableHints(_world: WorldState) {
@@ -263,9 +324,17 @@ export class WorldScene extends Phaser.Scene {
     }
 
     // Create/update sprites for items in this room
+    const room = world.rooms[this.currentRoom];
     for (const [itemId, item] of Object.entries(world.items) as [string, ItemInstance][]) {
-      if (item.state === "carried" || item.roomId !== this.currentRoom) continue;
-      if (!item.position) continue;
+      if (item.state === "carried") continue;
+
+      // For in_storage items, only show if we're in the storage room
+      if (item.state === "in_storage") {
+        if (this.currentRoom !== "storage") continue;
+      } else {
+        if (item.roomId !== this.currentRoom) continue;
+        if (!item.position) continue;
+      }
 
       let container = this.itemSprites.get(itemId);
       if (!container) {
@@ -273,17 +342,23 @@ export class WorldScene extends Phaser.Scene {
         this.itemSprites.set(itemId, container);
       }
 
-      // Map server position to screen position using placement zones
-      if (item.state === "placed") {
-        const room = world.rooms[this.currentRoom];
-        if (room) {
-          for (const zone of Object.values(room.placementZones)) {
-            if (zone.occupiedByItemId === itemId) {
-              const screenX = (zone.position.x / (room.widthTiles * 32)) * GAME_W;
-              const screenY = this.getRender().floorY - 60;
+      // Position based on placement zone
+      if (room) {
+        for (const zone of Object.values(room.placementZones)) {
+          if (zone.occupiedByItemId === itemId) {
+            const roomWidthPx = room.widthTiles * 32;
+            const roomHeightPx = room.heightTiles * 32;
+            const screenX = (zone.position.x / roomWidthPx) * GAME_W;
+            if (item.kind === "rack") {
+              // Map zone Y to screen Y — racks sit against the wall
+              const screenY = (zone.position.y / roomHeightPx) * GAME_H;
               container.setPosition(screenX, screenY);
-              break;
+            } else if (item.state === "in_storage") {
+              container.setPosition(screenX, this.getRender().floorY - 40);
+            } else {
+              container.setPosition(screenX, this.getRender().floorY - 30);
             }
+            break;
           }
         }
       }
@@ -296,17 +371,52 @@ export class WorldScene extends Phaser.Scene {
     this.updateCarriedVisual(world);
   }
 
+  private getPackageSize(model: string): { w: number; h: number } {
+    const state = useGameStore.getState().state;
+    if (state?.world.shop) {
+      for (const listing of Object.values(state.world.shop.listings)) {
+        if (listing.model === model) {
+          return listing.specs.packageSize;
+        }
+      }
+    }
+    return { w: 70, h: 50 }; // fallback
+  }
+
   private createItemSprite(item: ItemInstance): Phaser.GameObjects.Container {
     const container = this.add.container(0, 0);
 
-    if (item.kind === "rack") {
-      const key = this.textures.exists("rack-world") ? "rack-world" : "rack-frame";
-      if (this.textures.exists(key)) {
-        const sprite = this.add.image(0, 0, key);
-        sprite.setDisplaySize(60, 120);
+    // Storage packages render as boxes — size from listing specs
+    if (item.state === "in_storage") {
+      const pkg = this.getPackageSize(item.model);
+      if (this.textures.exists("package-box")) {
+        const sprite = this.add.image(0, 0, "package-box");
+        sprite.setDisplaySize(pkg.w, pkg.h);
         container.add(sprite);
       } else {
-        const body = this.add.rectangle(0, 0, 60, 120, 0x4a4240);
+        const box = this.add.rectangle(0, 0, pkg.w, pkg.h, 0x8a6a40);
+        box.setStrokeStyle(2, 0xa08050);
+        container.add(box);
+        const label = this.add.text(0, 0, "PKG", {
+          fontSize: "10px",
+          fontFamily: "monospace",
+          color: "#f0e0cc",
+        }).setOrigin(0.5);
+        container.add(label);
+      }
+      return container;
+    }
+
+    if (item.kind === "rack") {
+      const key = this.textures.exists("rack-empty") ? "rack-empty"
+        : this.textures.exists("rack-frame") ? "rack-frame"
+        : "rack-world";
+      if (this.textures.exists(key)) {
+        const sprite = this.add.image(0, 0, key);
+        sprite.setDisplaySize(160, 240);
+        container.add(sprite);
+      } else {
+        const body = this.add.rectangle(0, 0, 160, 240, 0x4a4240);
         body.setStrokeStyle(2, 0x6a6058);
         container.add(body);
       }
@@ -353,12 +463,12 @@ export class WorldScene extends Phaser.Scene {
 
       if (textureKey) {
         this.carriedSprite = this.add.image(0, 0, textureKey);
-        this.carriedSprite.setDisplaySize(40, 35);
+        this.carriedSprite.setDisplaySize(60, 52);
       } else {
         const g = this.add.graphics();
         g.fillStyle(0x8a6a40);
-        g.fillRect(0, 0, 40, 30);
-        g.generateTexture("carried-fallback", 40, 30);
+        g.fillRect(0, 0, 60, 52);
+        g.generateTexture("carried-fallback", 60, 52);
         g.destroy();
         this.carriedSprite = this.add.image(0, 0, "carried-fallback");
       }
@@ -372,6 +482,16 @@ export class WorldScene extends Phaser.Scene {
   // --- Update loop ---
 
   update(_time: number, _delta: number) {
+    // Skip all input when shop overlay is open
+    if (useGameStore.getState().activeView === "shop") {
+      this.playerBody.setVelocity(0, 0);
+      if (this.playerSprite.anims.isPlaying) {
+        this.playerSprite.stop();
+        this.playerSprite.setFrame(0);
+      }
+      return;
+    }
+
     this.handleMovement();
     this.checkInteractables();
     this.handleInteraction();
@@ -481,6 +601,15 @@ export class WorldScene extends Phaser.Scene {
           this.nearestInteractable = { id: itemId, kind: "item", prompt: `[E] Pick up ${item.kind}` };
         }
       }
+
+      // Check storage shelves with packages
+      for (const zone of Object.values(room.placementZones)) {
+        if (zone.kind !== "storage_shelf" || !zone.occupiedByItemId) continue;
+        const screenX = (zone.position.x / roomWidthPx) * GAME_W;
+        if (Math.abs(px - screenX) < 60) {
+          this.nearestInteractable = { id: zone.id, kind: "storage_shelf", prompt: "[E] Pick up package" };
+        }
+      }
     }
 
     // Show/hide prompt — fixed at bottom center
@@ -517,7 +646,7 @@ export class WorldScene extends Phaser.Scene {
     }
 
     if (kind === "staff_computer" || kind === "laptop") {
-      this.events.emit("openShop");
+      useGameStore.getState().openShop();
       return;
     }
 
@@ -535,10 +664,22 @@ export class WorldScene extends Phaser.Scene {
     }
 
     if (kind === "storage_shelf") {
-      // Pickup from storage shelf
-      rpcClient.call("pickupFromStorage", { itemId: id });
+      // Pickup from storage shelf (id is the shelf zone id)
+      rpcClient.call("pickupFromStorage", { shelfId: id });
       return;
     }
+  }
+
+  /** Map screen coordinates back to world/server coordinates */
+  private screenToWorld(screenX: number, screenY: number): { x: number; y: number } {
+    const state = useGameStore.getState().state;
+    const room = state?.world?.rooms[this.currentRoom];
+    if (!room) return { x: screenX, y: screenY };
+    const roomWidthPx = room.widthTiles * 32;
+    return {
+      x: (screenX / GAME_W) * roomWidthPx,
+      y: (screenY / GAME_H) * (room.heightTiles * 32),
+    };
   }
 
   private syncPositionToServer() {
@@ -549,8 +690,9 @@ export class WorldScene extends Phaser.Scene {
     if (vx === 0) return;
 
     this.lastSyncTime = now;
+    const worldPos = this.screenToWorld(this.player.x, this.player.y);
     rpcClient.call("movePlayer", {
-      position: { x: this.player.x, y: this.player.y },
+      position: worldPos,
       facing: vx < 0 ? "left" : "right",
     });
   }

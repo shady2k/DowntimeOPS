@@ -4,9 +4,19 @@ import type {
   Facing,
   ItemInstance,
   PlayerState,
+  StoragePackage,
 } from "@downtime-ops/shared";
 import type { EngineResult } from "../index";
 import { TILE_SIZE } from "./worldFactory";
+
+// --- Bespoke result type for batch purchase ---
+
+export interface BuyCartResult {
+  state: GameState;
+  purchasedItemIds: string[];
+  totalCost: number;
+  error?: string;
+}
 
 function genId(prefix: string): string {
   return `${prefix}-${crypto.randomUUID()}`;
@@ -22,7 +32,8 @@ export type WorldAction =
   | { type: "PICKUP_ITEM"; itemId: string }
   | { type: "DROP_ITEM"; position: Vec2 }
   | { type: "PLACE_RACK"; itemId: string; zoneId: string }
-  | { type: "INSTALL_DEVICE"; itemId: string; rackItemId: string; slotU: number };
+  | { type: "INSTALL_DEVICE"; itemId: string; rackItemId: string; slotU: number }
+  | { type: "PICKUP_FROM_STORAGE"; shelfId: string };
 
 // --- Action dispatcher ---
 
@@ -47,6 +58,8 @@ export function applyWorldAction(
       return placeRack(state, action.itemId, action.zoneId);
     case "INSTALL_DEVICE":
       return installDevice(state, action.itemId, action.rackItemId, action.slotU);
+    case "PICKUP_FROM_STORAGE":
+      return pickupFromStorage(state, action.shelfId);
     default: {
       const _exhaustive: never = action;
       return { state, error: `Unknown world action type: ${(_exhaustive as { type: string }).type}` };
@@ -273,12 +286,9 @@ function pickupItem(
   if (item.state !== "placed") return { state, error: "Can only pick up placed items" };
   if (item.roomId !== player.roomId) return { state, error: "Item is in another room" };
 
-  // Check proximity (within 2 tiles)
-  const dist = Math.hypot(
-    item.position!.x - player.position.x,
-    item.position!.y - player.position.y,
-  );
-  if (dist > TILE_SIZE * 3) {
+  // Check proximity (X only — side-view game)
+  const distX = Math.abs(item.position!.x - player.position.x);
+  if (distX > TILE_SIZE * 6) {
     return { state, error: "Too far away" };
   }
 
@@ -371,12 +381,9 @@ function placeRack(
   if (zone.occupiedByItemId) return { state, error: "Zone is already occupied" };
   if (zone.kind !== "rack_slot") return { state, error: "Zone is not a rack slot" };
 
-  // Check proximity
-  const dist = Math.hypot(
-    zone.position.x - player.position.x,
-    zone.position.y - player.position.y,
-  );
-  if (dist > TILE_SIZE * 4) {
+  // Check proximity (X only — side-view game, Y is irrelevant for nearness)
+  const distX = Math.abs(zone.position.x - player.position.x);
+  if (distX > TILE_SIZE * 6) {
     return { state, error: "Too far from placement zone" };
   }
 
@@ -478,6 +485,196 @@ function installDevice(
             installedInRackId: rackId,
             installedAtSlotU: _slotU,
           },
+        },
+      },
+    },
+  };
+}
+
+// --- Batch purchase (bespoke, not in action pipeline) ---
+
+export function buyCartItems(
+  state: GameState,
+  items: Array<{ listingId: string; quantity: number }>,
+): BuyCartResult {
+  // Normalize: aggregate duplicates, validate quantities
+  const normalized = new Map<string, number>();
+  for (const { listingId, quantity } of items) {
+    if (!Number.isInteger(quantity) || quantity <= 0) {
+      return { state, purchasedItemIds: [], totalCost: 0, error: `Invalid quantity for ${listingId}` };
+    }
+    normalized.set(listingId, (normalized.get(listingId) || 0) + quantity);
+  }
+
+  // Validate all listings exist and calculate total cost
+  let totalCost = 0;
+  for (const [listingId, qty] of normalized) {
+    const listing = state.world.shop.listings[listingId];
+    if (!listing) {
+      return { state, purchasedItemIds: [], totalCost: 0, error: `Listing ${listingId} not found` };
+    }
+    if (listing.stock !== null && listing.stock < qty) {
+      return { state, purchasedItemIds: [], totalCost: 0, error: `${listing.name} out of stock` };
+    }
+    totalCost += listing.price * qty;
+  }
+
+  if (state.money < totalCost) {
+    return { state, purchasedItemIds: [], totalCost: 0, error: "Not enough money" };
+  }
+
+  // Find available storage shelves
+  const storageRoom = state.world.rooms["storage"];
+  const updatedZones = storageRoom ? { ...storageRoom.placementZones } : {};
+  const availableShelves: string[] = [];
+  for (const [zoneId, zone] of Object.entries(updatedZones)) {
+    if (zone.kind === "storage_shelf" && !zone.occupiedByItemId) {
+      availableShelves.push(zoneId);
+    }
+  }
+
+  // Create items and storage packages
+  const purchasedItemIds: string[] = [];
+  const newItems = { ...state.world.items };
+  const newPackages: Record<string, StoragePackage> = { ...state.world.storage.packages };
+  const newListings = { ...state.world.shop.listings };
+  let shelfIdx = 0;
+
+  for (const [listingId, qty] of normalized) {
+    const listing = state.world.shop.listings[listingId];
+    for (let i = 0; i < qty; i++) {
+      const itemId = genId("item");
+      purchasedItemIds.push(itemId);
+
+      const item: ItemInstance = {
+        id: itemId,
+        kind: listing.itemKind,
+        model: listing.model,
+        state: "in_storage",
+        roomId: "storage",
+        position: null,
+        installedInRackId: null,
+        installedAtSlotU: null,
+      };
+      newItems[itemId] = item;
+      newPackages[itemId] = { itemId, purchasedAt: state.tick };
+
+      // Assign to shelf if available
+      if (shelfIdx < availableShelves.length) {
+        const shelfId = availableShelves[shelfIdx];
+        updatedZones[shelfId] = { ...updatedZones[shelfId], occupiedByItemId: itemId };
+        shelfIdx++;
+      }
+    }
+
+    // Update stock if limited
+    if (listing.stock !== null) {
+      newListings[listingId] = { ...listing, stock: listing.stock - qty };
+    }
+  }
+
+  // Build updated rooms
+  let newRooms = state.world.rooms;
+  if (storageRoom) {
+    newRooms = {
+      ...newRooms,
+      storage: { ...storageRoom, placementZones: updatedZones },
+    };
+  }
+
+  const newState: GameState = {
+    ...state,
+    money: state.money - totalCost,
+    world: {
+      ...state.world,
+      items: newItems,
+      storage: { packages: newPackages },
+      shop: { ...state.world.shop, listings: newListings },
+      rooms: newRooms,
+    },
+    log: [
+      ...state.log,
+      {
+        id: genId("log"),
+        tick: state.tick,
+        message: `Ordered ${purchasedItemIds.length} item(s) for $${totalCost} — delivered to storage`,
+        category: "system" as const,
+      },
+    ],
+  };
+
+  return { state: newState, purchasedItemIds, totalCost };
+}
+
+// --- Pickup from storage shelf ---
+
+function pickupFromStorage(
+  state: GameState,
+  shelfId: string,
+): EngineResult {
+  const player = state.world.player;
+
+  if (player.carryingItemId) {
+    return { state, error: "Already carrying something" };
+  }
+
+  const storageRoom = state.world.rooms["storage"];
+  if (!storageRoom) return { state, error: "Storage room not found" };
+
+  const zone = storageRoom.placementZones[shelfId];
+  if (!zone) return { state, error: "Shelf not found" };
+  if (zone.kind !== "storage_shelf") return { state, error: "Not a storage shelf" };
+  if (!zone.occupiedByItemId) return { state, error: "Shelf is empty" };
+
+  const itemId = zone.occupiedByItemId;
+  const item = state.world.items[itemId];
+  if (!item) return { state, error: "Item not found" };
+
+  // Remove from storage packages
+  const newPackages = { ...state.world.storage.packages };
+  delete newPackages[itemId];
+
+  // Clear shelf
+  let updatedZones = {
+    ...storageRoom.placementZones,
+    [shelfId]: { ...zone, occupiedByItemId: null },
+  };
+
+  // Auto-promote: move next queued package (without a shelf) onto the freed shelf
+  const shelvesWithItems = new Set(
+    Object.values(updatedZones)
+      .filter((z) => z.kind === "storage_shelf" && z.occupiedByItemId)
+      .map((z) => z.occupiedByItemId),
+  );
+  const unshelfedPackage = Object.values(newPackages).find(
+    (pkg) => !shelvesWithItems.has(pkg.itemId),
+  );
+  if (unshelfedPackage) {
+    updatedZones = {
+      ...updatedZones,
+      [shelfId]: { ...updatedZones[shelfId], occupiedByItemId: unshelfedPackage.itemId },
+    };
+  }
+
+  return {
+    state: {
+      ...state,
+      world: {
+        ...state.world,
+        player: { ...player, carryingItemId: itemId },
+        items: {
+          ...state.world.items,
+          [itemId]: {
+            ...item,
+            state: "carried",
+            roomId: player.roomId,
+            position: player.position,
+          },
+        },
+        storage: { packages: newPackages },
+        rooms: {
+          ...state.world.rooms,
+          storage: { ...storageRoom, placementZones: updatedZones },
         },
       },
     },
