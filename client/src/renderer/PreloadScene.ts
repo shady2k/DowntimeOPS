@@ -47,12 +47,8 @@ export class PreloadScene extends Phaser.Scene {
 
     // UI
     this.load.image("ui-panel-bg", "assets/ui/panel-bg.png");
+    this.load.image("ui-shelf-tray", "assets/ui/shelf-tray.png");
     this.load.image("ui-logo", "assets/ui/logo.png");
-
-    // Rack scene — unified workstation background (full-screen scene plate)
-    this.load.image("workstation-bg", "assets/backgrounds/workstation-bg.png");
-    // Legacy fallback (bay only)
-    this.load.image("bay-wall", "assets/backgrounds/bay-wall.png");
 
     // ── Not yet available — uncomment when ready ──
     //

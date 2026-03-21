@@ -2,6 +2,7 @@ import { useEffect, useRef } from "react";
 import Phaser from "phaser";
 import { PreloadScene } from "./PreloadScene";
 import { RackScene } from "./RackScene";
+import { RackUIScene } from "./RackUIScene";
 import { WorldScene } from "../game/scenes/WorldScene";
 import { UIScene } from "../game/scenes/UIScene";
 import { useGameStore } from "../store/gameStore";
@@ -20,8 +21,8 @@ export function PhaserGame() {
     gameRef.current = new Phaser.Game({
       type: Phaser.AUTO,
       parent: containerRef.current,
-      transparent: true, // Individual scenes set their own background; RackScene is transparent
-      scene: [PreloadScene, WorldScene, UIScene, RackScene],
+      backgroundColor: "#1a1410",
+      scene: [PreloadScene, WorldScene, UIScene, RackScene, RackUIScene],
       physics: {
         default: "arcade",
         arcade: {
