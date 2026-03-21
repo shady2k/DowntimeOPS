@@ -19,6 +19,9 @@ function App() {
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.key === "Escape" && appMode === "playing") {
+        // Don't open pause menu when closing rack view — RackScene handles its own ESC
+        const view = useGameStore.getState().activeView;
+        if (view === "rack") return;
         e.preventDefault();
         togglePauseMenu();
       }

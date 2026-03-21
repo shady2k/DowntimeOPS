@@ -23,6 +23,7 @@ export interface GameStore {
   pauseMenuOpen: boolean;
 
   // Rack interaction state
+  openRackItemId: string | null;
   cablingFrom: CablingSource | null;
   placingModel: string | null;
   selectedClientId: string | null;
@@ -43,6 +44,10 @@ export interface GameStore {
   // Shop actions
   openShop: () => void;
   closeShop: () => void;
+
+  // Rack panel actions
+  openRack: (itemId: string) => void;
+  closeRack: () => void;
 
   // Rack interaction actions
   startCabling: (source: CablingSource) => void;
@@ -68,6 +73,7 @@ export const useGameStore = create<GameStore>((set) => ({
   pauseMenuOpen: false,
 
   // Rack interaction state
+  openRackItemId: null,
   cablingFrom: null,
   placingModel: null,
   selectedClientId: null,
@@ -101,6 +107,7 @@ export const useGameStore = create<GameStore>((set) => ({
       selectedDeviceId: null,
       selectedPortId: null,
       activeView: "world",
+      openRackItemId: null,
       cablingFrom: null,
       placingModel: null,
       selectedClientId: null,
@@ -121,6 +128,10 @@ export const useGameStore = create<GameStore>((set) => ({
   // Shop actions
   openShop: () => set({ activeView: "shop" }),
   closeShop: () => set({ activeView: "world" }),
+
+  // Rack panel actions
+  openRack: (itemId) => set({ activeView: "rack", openRackItemId: itemId }),
+  closeRack: () => set({ activeView: "world", openRackItemId: null }),
 
   // Rack interaction actions
   startCabling: (source) =>

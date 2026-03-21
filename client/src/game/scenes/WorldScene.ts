@@ -66,6 +66,18 @@ export class WorldScene extends Phaser.Scene {
   private nearestInteractable: { id: string; kind: string; prompt: string } | null = null;
   private promptText!: Phaser.GameObjects.Text;
 
+  // E-key press tracking
+  private ePressedAt = 0; // timestamp when E was first pressed
+  private eWasDown = false; // previous frame state
+
+  // Hold-E tracking (for picking up racks)
+  private holdStartTime = 0;
+  private holdTarget: string | null = null;
+  private holdBarBg: Phaser.GameObjects.Rectangle | null = null;
+  private holdBarFill: Phaser.GameObjects.Rectangle | null = null;
+  private static readonly HOLD_DURATION = 600; // ms to hold E
+  private static readonly TAP_THRESHOLD = 200; // max ms for a tap
+
   // Sync
   private lastSyncTime = 0;
   private unsubscribe?: () => void;
@@ -482,8 +494,9 @@ export class WorldScene extends Phaser.Scene {
   // --- Update loop ---
 
   update(_time: number, _delta: number) {
-    // Skip all input when shop overlay is open
-    if (useGameStore.getState().activeView === "shop") {
+    // Skip all input when shop overlay is open (rack view uses scene switch, not overlay)
+    const view = useGameStore.getState().activeView;
+    if (view === "shop") {
       this.playerBody.setVelocity(0, 0);
       if (this.playerSprite.anims.isPlaying) {
         this.playerSprite.stop();
@@ -592,10 +605,24 @@ export class WorldScene extends Phaser.Scene {
       }
     }
 
-    // Check placed items for pickup
+    // Check placed racks for interaction (open rack / hold to pick up)
+    if (!state.world.player.carryingItemId || state.world.items[state.world.player.carryingItemId]?.kind === "device") {
+      for (const [itemId, item] of Object.entries(state.world.items)) {
+        if (item.state !== "placed" || item.roomId !== this.currentRoom || item.kind !== "rack") continue;
+        const itemContainer = this.itemSprites.get(itemId);
+        if (itemContainer && Math.abs(px - itemContainer.x) < 80) {
+          const canPickUp = !state.world.player.carryingItemId;
+          const prompt = canPickUp ? "[E] Open Rack  [Hold E] Pick up" : "[E] Open Rack";
+          this.nearestInteractable = { id: itemId, kind: "rack", prompt };
+        }
+      }
+    }
+
+    // Check placed items for pickup (skip racks — they use "Open Rack" instead)
     if (!state.world.player.carryingItemId) {
       for (const [itemId, item] of Object.entries(state.world.items)) {
         if (item.state !== "placed" || item.roomId !== this.currentRoom) continue;
+        if (item.kind === "rack") continue;
         const itemContainer = this.itemSprites.get(itemId);
         if (itemContainer && Math.abs(px - itemContainer.x) < 60) {
           this.nearestInteractable = { id: itemId, kind: "item", prompt: `[E] Pick up ${item.kind}` };
@@ -612,6 +639,11 @@ export class WorldScene extends Phaser.Scene {
       }
     }
 
+    // Reset hold bar if target changed or walked away
+    if (this.holdTarget && this.nearestInteractable?.id !== this.holdTarget) {
+      this.resetHold();
+    }
+
     // Show/hide prompt — fixed at bottom center
     if (this.nearestInteractable) {
       this.promptText.setText(this.nearestInteractable.prompt);
@@ -626,6 +658,73 @@ export class WorldScene extends Phaser.Scene {
   }
 
   private handleInteraction() {
+    const isDown = this.interactKey.isDown;
+    const justUp = !isDown && this.eWasDown;
+
+    // Track when E was first pressed
+    if (isDown && !this.eWasDown) {
+      this.ePressedAt = Date.now();
+    }
+    this.eWasDown = isDown;
+
+    // --- Hold-E logic for racks (hold = pickup, tap = open) ---
+    if (isDown && this.nearestInteractable?.kind === "rack") {
+      if (this.holdTarget !== this.nearestInteractable.id) {
+        this.holdStartTime = Date.now();
+        this.holdTarget = this.nearestInteractable.id;
+      }
+
+      const state = useGameStore.getState().state;
+      const canPickUp = state?.world && !state.world.player.carryingItemId;
+
+      if (canPickUp) {
+        const elapsed = Date.now() - this.holdStartTime;
+        const progress = Math.min(elapsed / WorldScene.HOLD_DURATION, 1);
+        // Only show bar after tap threshold so quick presses don't flash it
+        this.updateHoldBar(elapsed > WorldScene.TAP_THRESHOLD ? progress : 0);
+
+        if (progress >= 1) {
+          rpcClient.call("pickupItem", { itemId: this.holdTarget });
+          this.resetHold();
+          return;
+        }
+      }
+      return;
+    }
+
+    // Reset hold if E released or target changed
+    if (!isDown && this.holdTarget) {
+      const wasTap = Date.now() - this.holdStartTime < WorldScene.TAP_THRESHOLD;
+      const tappedId = this.holdTarget;
+      this.resetHold();
+
+      if (wasTap && this.nearestInteractable?.kind === "rack" && this.nearestInteractable.id === tappedId) {
+        useGameStore.getState().openRack(tappedId);
+        this.scene.sleep("WorldScene");
+        if (this.scene.isSleeping("RackScene")) {
+          this.scene.wake("RackScene");
+        } else if (!this.scene.isActive("RackScene")) {
+          this.scene.launch("RackScene");
+        }
+      }
+      return;
+    }
+
+    // --- Release-based interactions (rack_pad) ---
+    // Only place rack on short tap release, so hold-E doesn't trigger placement
+    if (justUp && this.nearestInteractable?.kind === "rack_pad") {
+      const pressDuration = Date.now() - this.ePressedAt;
+      if (pressDuration < WorldScene.TAP_THRESHOLD) {
+        const state = useGameStore.getState().state;
+        const carryingId = state?.world?.player.carryingItemId;
+        if (carryingId) {
+          rpcClient.call("placeRack", { itemId: carryingId, zoneId: this.nearestInteractable.id });
+        }
+      }
+      return;
+    }
+
+    // --- Normal tap-E interactions (JustDown) ---
     if (!Phaser.Input.Keyboard.JustDown(this.interactKey)) return;
     if (!this.nearestInteractable) return;
 
@@ -650,24 +749,44 @@ export class WorldScene extends Phaser.Scene {
       return;
     }
 
-    if (kind === "rack_pad") {
-      const carryingId = state.world.player.carryingItemId;
-      if (carryingId) {
-        rpcClient.call("placeRack", { itemId: carryingId, zoneId: id });
-      }
-      return;
-    }
-
     if (kind === "item") {
       rpcClient.call("pickupItem", { itemId: id });
       return;
     }
 
     if (kind === "storage_shelf") {
-      // Pickup from storage shelf (id is the shelf zone id)
       rpcClient.call("pickupFromStorage", { shelfId: id });
       return;
     }
+  }
+
+  private resetHold() {
+    this.holdTarget = null;
+    this.holdStartTime = 0;
+    this.updateHoldBar(0);
+  }
+
+  private updateHoldBar(progress: number) {
+    if (progress <= 0) {
+      this.holdBarBg?.setVisible(false);
+      this.holdBarFill?.setVisible(false);
+      return;
+    }
+
+    const barW = 60;
+    const barH = 6;
+    const x = this.player.x - barW / 2;
+    const y = this.player.y - 70;
+
+    if (!this.holdBarBg) {
+      this.holdBarBg = this.add.rectangle(x, y, barW, barH, 0x1e1814, 0.8)
+        .setOrigin(0, 0.5).setDepth(200);
+      this.holdBarFill = this.add.rectangle(x, y, 0, barH, 0xe8a840, 1)
+        .setOrigin(0, 0.5).setDepth(201);
+    }
+
+    this.holdBarBg.setPosition(x, y).setVisible(true);
+    this.holdBarFill!.setPosition(x, y).setSize(barW * progress, barH).setVisible(true);
   }
 
   /** Map screen coordinates back to world/server coordinates */

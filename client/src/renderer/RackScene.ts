@@ -78,6 +78,7 @@ export class RackScene extends Phaser.Scene {
   private placementSlotZones: Phaser.GameObjects.Zone[] = [];
   private tooltip: Phaser.GameObjects.Container | null = null;
 
+  private rackTitle: Phaser.GameObjects.Text | null = null;
   private lastStateKey = "";
   private unsubscribe: (() => void) | null = null;
 
@@ -143,9 +144,11 @@ export class RackScene extends Phaser.Scene {
       const state = store.state;
       if (!state) return;
 
+      const rackDevices = this.getRackDevices(state);
       const stateKey = [
         state.tick,
-        Object.keys(state.devices).length,
+        store.openRackItemId ?? "",
+        Object.keys(rackDevices).length,
         Object.keys(state.links).length,
         store.selectedDeviceId,
         store.cablingFrom?.deviceId ?? "",
@@ -153,7 +156,7 @@ export class RackScene extends Phaser.Scene {
         store.placingModel ?? "",
         store.selectedClientId ?? "",
         store.highlightedAlertId ?? "",
-        ...Object.values(state.devices).map(
+        ...Object.values(rackDevices).map(
           (d) => `${d.id}:${d.status}:${d.slotU}`,
         ),
       ].join("|");
@@ -179,6 +182,17 @@ export class RackScene extends Phaser.Scene {
     }
 
     this.scale.on("resize", this.handleResize, this);
+
+    // When scene wakes (returned to from WorldScene), refresh title and re-render
+    this.events.on("wake", () => {
+      this.updateRackTitle();
+      this.lastStateKey = ""; // force re-render
+      const s = useGameStore.getState();
+      if (s.state) {
+        this.renderAll(s.state, s);
+        this.syncAnimationState(s.state);
+      }
+    });
   }
 
   shutdown() {
@@ -221,13 +235,17 @@ export class RackScene extends Phaser.Scene {
   // ── Rack frame ───────────────────────────────────────────────
 
   private createRackFrame() {
+    const frameKey = this.textures.exists("rack-empty") ? "rack-empty" : "rack-frame";
     const frame = this.add
-      .image(RACK_X, RACK_Y, "rack-frame")
+      .image(RACK_X, RACK_Y, frameKey)
       .setOrigin(0, 0);
+    // Scale the image to match RACK layout dimensions
+    const rackH = RACK.HEIGHT + 20; // slots + title area
+    frame.setDisplaySize(RACK.WIDTH, rackH);
     frame.setDepth(DEPTH.RACK_FRAME);
     this.rackLayer.add(frame);
 
-    const title = this.add
+    this.rackTitle = this.add
       .text(RACK_X + RACK.WIDTH / 2, RACK_Y + 10, "RACK A", {
         fontSize: "11px",
         color: TEXT_COLORS.heading,
@@ -235,8 +253,8 @@ export class RackScene extends Phaser.Scene {
         fontFamily: "'Nunito', sans-serif",
       })
       .setOrigin(0.5, 0.5);
-    title.setDepth(DEPTH.RACK_FRAME);
-    this.rackLayer.add(title);
+    this.rackTitle.setDepth(DEPTH.RACK_FRAME);
+    this.rackLayer.add(this.rackTitle);
   }
 
   // ── U labels ─────────────────────────────────────────────────
@@ -262,8 +280,12 @@ export class RackScene extends Phaser.Scene {
 
   private setupCamera() {
     const cam = this.cameras.main;
-    cam.setBounds(0, 0, 1200, 900);
-    cam.centerOn(RACK_X + RACK.WIDTH / 2, RACK_Y + RACK.HEIGHT / 2 + 20);
+    const rackTotalH = RACK.HEIGHT + 40; // slots + title + padding
+    const viewH = this.scale.height;
+    const zoom = Math.min(1, viewH / rackTotalH);
+    cam.setZoom(zoom);
+    cam.setBounds(0, 0, 1200, rackTotalH + RACK_Y * 2);
+    cam.centerOn(RACK_X + RACK.WIDTH / 2, RACK_Y + rackTotalH / 2);
   }
 
   private handleResize() {
@@ -319,8 +341,13 @@ export class RackScene extends Phaser.Scene {
 
     this.input.keyboard?.on("keydown-ESC", () => {
       const store = useGameStore.getState();
-      if (store.cablingFrom) store.cancelCabling();
-      if (store.placingModel) store.cancelPlacing();
+      if (store.cablingFrom) { store.cancelCabling(); return; }
+      if (store.placingModel) { store.cancelPlacing(); return; }
+
+      // Return to world view
+      store.closeRack();
+      this.scene.sleep("RackScene");
+      this.scene.wake("WorldScene");
     });
 
     this.input.on("pointerdown", (pointer: Phaser.Input.Pointer) => {
@@ -346,15 +373,45 @@ export class RackScene extends Phaser.Scene {
     return RACK_X + RACK.RAIL_WIDTH + 2;
   }
 
+  private updateRackTitle() {
+    const rackId = this.getOpenRackId();
+    const state = useGameStore.getState().state;
+    if (rackId && state?.racks[rackId] && this.rackTitle) {
+      this.rackTitle.setText(state.racks[rackId].name.toUpperCase());
+    }
+  }
+
+  /** Resolve the simulation rackId from the currently opened rack item */
+  private getOpenRackId(): string | null {
+    const store = useGameStore.getState();
+    const state = store.state;
+    if (!state) return null;
+    if (!store.openRackItemId) return Object.keys(state.racks)[0] ?? null;
+    const rackItem = state.world.items[store.openRackItemId];
+    return rackItem?.installedInRackId ?? null;
+  }
+
+  /** Filter state.devices to only those belonging to the currently open rack */
+  private getRackDevices(state: GameState): Record<string, Device> {
+    const rackId = this.getOpenRackId();
+    if (!rackId) return {};
+    const result: Record<string, Device> = {};
+    for (const [id, device] of Object.entries(state.devices)) {
+      if (device.rackId === rackId) result[id] = device;
+    }
+    return result;
+  }
+
   // ── Audio event detection ────────────────────────────────────
 
   private detectChangesAndEmitAudio(state: GameState) {
-    const currentDeviceIds = new Set(Object.keys(state.devices));
+    const rackDevices = this.getRackDevices(state);
+    const currentDeviceIds = new Set(Object.keys(rackDevices));
     const currentLinkIds = new Set(Object.keys(state.links));
     const currentFailedDeviceIds = new Set<string>();
     const currentFailedPortKeys = new Set<string>();
 
-    for (const device of Object.values(state.devices)) {
+    for (const device of Object.values(rackDevices)) {
       if (device.status === "failed") currentFailedDeviceIds.add(device.id);
       for (const port of device.ports) {
         if (port.status === "down")
@@ -367,7 +424,7 @@ export class RackScene extends Phaser.Scene {
       if (!this.prevDeviceIds.has(id)) {
         emitAudioEvent("device_place", { deviceId: id });
         // Queue placement animation
-        const device = state.devices[id];
+        const device = rackDevices[id];
         if (device) {
           this.pendingPlacements.push({
             deviceId: id,
@@ -489,7 +546,8 @@ export class RackScene extends Phaser.Scene {
     }
 
     // Sync failure VFX
-    for (const device of Object.values(state.devices)) {
+    const rackDevicesSync = this.getRackDevices(state);
+    for (const device of Object.values(rackDevicesSync)) {
       if (device.status === "failed" && !this.failureVfx.has(device.id)) {
         this.failureVfx.set(device.id, {
           deviceId: device.id,
@@ -637,7 +695,7 @@ export class RackScene extends Phaser.Scene {
     }
 
     // Failed port sparks
-    for (const device of Object.values(state.devices)) {
+    for (const device of Object.values(this.getRackDevices(state))) {
       for (const port of device.ports) {
         if (port.status !== "down") continue;
         const pos = this.getPortWorldPos(device, port.index);
@@ -662,7 +720,7 @@ export class RackScene extends Phaser.Scene {
     const state = useGameStore.getState().state;
     if (!state) return;
 
-    for (const device of Object.values(state.devices)) {
+    for (const device of Object.values(this.getRackDevices(state))) {
       for (const port of device.ports) {
         if (!port.linkId) continue;
         const key = port.id;
@@ -679,9 +737,11 @@ export class RackScene extends Phaser.Scene {
     state: GameState,
     store: ReturnType<typeof useGameStore.getState>,
   ) {
+    const rackDevices = this.getRackDevices(state);
+
     // Destroy old visuals
     for (const [id, visual] of this.deviceVisuals) {
-      if (!state.devices[id]) {
+      if (!rackDevices[id]) {
         visual.container.destroy();
         visual.hitZone.destroy();
         this.deviceVisuals.delete(id);
@@ -720,7 +780,7 @@ export class RackScene extends Phaser.Scene {
       }
     }
 
-    for (const device of Object.values(state.devices)) {
+    for (const device of Object.values(rackDevices)) {
       const selected = device.id === store.selectedDeviceId;
       const highlighted = highlightedDeviceIds.has(device.id);
 
@@ -1240,8 +1300,9 @@ export class RackScene extends Phaser.Scene {
 
     if (!store.placingModel) return;
 
+    const rackDevices = this.getRackDevices(state);
     const occupied = new Set<number>();
-    for (const device of Object.values(state.devices)) {
+    for (const device of Object.values(rackDevices)) {
       for (let u = device.slotU; u < device.slotU + device.uHeight; u++) {
         occupied.add(u);
       }
@@ -1275,7 +1336,7 @@ export class RackScene extends Phaser.Scene {
       zone.on("pointerdown", () => {
         const currentStore = useGameStore.getState();
         if (!currentStore.placingModel) return;
-        const rackId = Object.keys(state.racks)[0];
+        const rackId = this.getOpenRackId();
         if (!rackId) return;
 
         rpcClient
