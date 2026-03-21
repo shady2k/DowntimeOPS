@@ -5,7 +5,7 @@ import { useShopCartStore } from "./shopStore";
 import { ShopProductCard } from "./ShopProductCard";
 import { THEME } from "../theme";
 
-type CategoryFilter = "all" | "rack" | "server" | "switch" | "router";
+type CategoryFilter = "all" | "rack" | "server" | "switch" | "router" | "cable";
 
 const CATEGORIES: { key: CategoryFilter; label: string }[] = [
   { key: "all", label: "All" },
@@ -13,11 +13,13 @@ const CATEGORIES: { key: CategoryFilter; label: string }[] = [
   { key: "server", label: "Servers" },
   { key: "switch", label: "Switches" },
   { key: "router", label: "Routers" },
+  { key: "cable", label: "Cables" },
 ];
 
 function matchesCategory(listing: ShopListing, filter: CategoryFilter): boolean {
   if (filter === "all") return true;
   if (filter === "rack") return listing.itemKind === "rack";
+  if (filter === "cable") return listing.itemKind === "cable";
   return listing.specs.type === filter;
 }
 
@@ -25,6 +27,7 @@ export function ShopCatalog() {
   const [filter, setFilter] = useState<CategoryFilter>("all");
   const money = useGameStore((s) => s.state?.money ?? 0);
   const listings = useGameStore((s) => s.state?.world.shop.listings ?? {});
+  const cableStock = useGameStore((s) => s.state?.world.cableStock);
   const cartItems = useShopCartStore((s) => s.items);
   const addItem = useShopCartStore((s) => s.addItem);
 
@@ -99,6 +102,7 @@ export function ShopCatalog() {
               canAfford={money >= listing.price}
               cartQty={cartItem?.quantity ?? 0}
               onAddToCart={() => addItem(listing.id)}
+              cableStock={cableStock}
             />
           );
         })}

@@ -14,6 +14,9 @@ export function PhaserGame() {
   useEffect(() => {
     if (!containerRef.current || gameRef.current) return;
 
+    // Render at native DPI for sharp text — scale manager shrinks it back
+    const dpr = window.devicePixelRatio || 1;
+
     gameRef.current = new Phaser.Game({
       type: Phaser.AUTO,
       parent: containerRef.current,
@@ -29,8 +32,8 @@ export function PhaserGame() {
       scale: {
         mode: Phaser.Scale.FIT,
         autoCenter: Phaser.Scale.CENTER_BOTH,
-        width: 960,
-        height: 540,
+        width: 960 * dpr,
+        height: 540 * dpr,
       },
       input: {
         mouse: {

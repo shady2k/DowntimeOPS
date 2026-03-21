@@ -48,6 +48,7 @@ export const THEME = {
     switch: "#5a8aaa",
     router: "#c48a40",
     firewall: "#b85a50",
+    cable: "#8a7ab8",
 
     // Client type badge colors
     startup: "#6ab0d4",

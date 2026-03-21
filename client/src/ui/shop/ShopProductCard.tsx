@@ -1,5 +1,12 @@
-import type { ShopListing } from "@downtime-ops/shared";
+import type { ShopListing, CableStock } from "@downtime-ops/shared";
 import { THEME, cardStyle, buttonStyle } from "../theme";
+
+const CABLE_MODEL_TO_TYPE: Record<string, keyof CableStock> = {
+  cable_cat6: "cat6",
+  cable_cat6a: "cat6a",
+  cable_om3_fiber: "om3_fiber",
+  cable_os2_fiber: "os2_fiber",
+};
 
 const PORT_TYPE_LABELS: Record<string, string> = {
   copper_1g: "1GbE",
@@ -14,6 +21,7 @@ const DEVICE_COLORS: Record<string, string> = {
   switch: THEME.colors.switch,
   router: THEME.colors.router,
   firewall: THEME.colors.firewall,
+  cable: THEME.colors.cable,
 };
 
 interface Props {
@@ -21,10 +29,13 @@ interface Props {
   canAfford: boolean;
   cartQty: number;
   onAddToCart: () => void;
+  cableStock?: CableStock;
 }
 
-export function ShopProductCard({ listing, canAfford, cartQty, onAddToCart }: Props) {
-  const color = DEVICE_COLORS[listing.specs.type] || THEME.colors.textMuted;
+export function ShopProductCard({ listing, canAfford, cartQty, onAddToCart, cableStock }: Props) {
+  const color = listing.itemKind === "cable"
+    ? DEVICE_COLORS.cable
+    : DEVICE_COLORS[listing.specs.type] || THEME.colors.textMuted;
 
   return (
     <div style={{ ...cardStyle(color), padding: "12px 14px", position: "relative" }}>
@@ -94,6 +105,11 @@ export function ShopProductCard({ listing, canAfford, cartQty, onAddToCart }: Pr
             {p.count}x {PORT_TYPE_LABELS[p.type] || p.type}
           </div>
         ))}
+        {listing.itemKind === "cable" && cableStock && (
+          <div style={{ gridColumn: "1 / -1", color: THEME.colors.info }}>
+            In stock: {cableStock[CABLE_MODEL_TO_TYPE[listing.model] ?? "cat6"]}
+          </div>
+        )}
       </div>
 
       {/* Price + Add to Cart */}

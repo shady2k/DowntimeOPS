@@ -11,7 +11,7 @@ import { rpcClient } from "../../rpc/client";
  * rendering and input — it never hardcodes room connections or layouts.
  */
 
-/** Game viewport — all rooms render at this size */
+/** Game viewport — all rooms render at this logical size */
 const GAME_W = 960;
 const GAME_H = 540;
 
@@ -94,6 +94,12 @@ export class WorldScene extends Phaser.Scene {
   }
 
   create() {
+    // Zoom camera by DPR so logical coords stay at 960x540
+    // while canvas renders at native DPI for sharp text
+    const dpr = window.devicePixelRatio || 1;
+    this.cameras.main.setZoom(dpr);
+    this.cameras.main.setBounds(0, 0, GAME_W, GAME_H);
+    this.cameras.main.centerOn(GAME_W / 2, GAME_H / 2);
     this.cameras.main.setBackgroundColor(0x0d0a07);
 
     // Create background sprite (will be swapped per room)
@@ -117,11 +123,11 @@ export class WorldScene extends Phaser.Scene {
     // Interaction prompt — fixed at bottom center
     this.promptText = this.add.text(GAME_W / 2, GAME_H - 40, "", {
       fontSize: "14px",
-      fontFamily: "monospace",
+      fontFamily: "'Nunito', sans-serif",
       color: "#f0e0cc",
       backgroundColor: "#1e1814dd",
       padding: { x: 12, y: 6 },
-    }).setDepth(200).setVisible(false).setOrigin(0.5);
+    }).setDepth(200).setVisible(false).setOrigin(0.5).setResolution(dpr);
 
     // Subscribe to store
     this.unsubscribe = useGameStore.subscribe((store) => {
@@ -612,7 +618,13 @@ export class WorldScene extends Phaser.Scene {
         const itemContainer = this.itemSprites.get(itemId);
         if (itemContainer && Math.abs(px - itemContainer.x) < 80) {
           const canPickUp = !state.world.player.carryingItemId;
-          const prompt = canPickUp ? "[E] Open Rack  [Hold E] Pick up" : "[E] Open Rack";
+          const carryingDevice = state.world.player.carryingItemId &&
+            state.world.items[state.world.player.carryingItemId]?.kind === "device";
+          const prompt = carryingDevice
+            ? "[E] Install in Rack"
+            : canPickUp
+              ? "[E] Open Rack  [Hold E] Pick up"
+              : "[E] Open Rack";
           this.nearestInteractable = { id: itemId, kind: "rack", prompt };
         }
       }

@@ -105,7 +105,7 @@ export interface PlayerState {
 
 // --- Items (physical objects in the world) ---
 
-export type ItemKind = "rack" | "device" | "tool" | "decor";
+export type ItemKind = "rack" | "device" | "cable" | "tool" | "decor";
 export type ItemState = "in_storage" | "carried" | "placed" | "installed";
 
 export interface ItemInstance {
@@ -152,6 +152,15 @@ export interface ShopState {
   listings: Record<string, ShopListing>;
 }
 
+// --- Cable supplies ---
+
+export interface CableStock {
+  cat6: number;
+  cat6a: number;
+  om3_fiber: number;
+  os2_fiber: number;
+}
+
 // --- World container ---
 
 export interface WorldState {
@@ -160,4 +169,5 @@ export interface WorldState {
   items: Record<ItemId, ItemInstance>;
   shop: ShopState;
   storage: StorageState;
+  cableStock: CableStock;
 }

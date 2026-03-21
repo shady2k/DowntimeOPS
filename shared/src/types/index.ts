@@ -39,5 +39,6 @@ export type {
   StoragePackage,
   StorageState,
   EdgeExit,
+  CableStock,
   WorldState,
 } from "./World";

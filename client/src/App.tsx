@@ -3,6 +3,7 @@ import { setupReconciler } from "./sync/reconciler";
 import { useGameStore } from "./store/gameStore";
 import { PhaserGame } from "./renderer/PhaserGame";
 import { ShopBrowser } from "./ui/shop/ShopBrowser";
+import { InventoryHUD } from "./ui/hud/InventoryHUD";
 import { MainMenu } from "./ui/MainMenu";
 import { THEME } from "./ui/theme";
 
@@ -61,6 +62,7 @@ function App() {
   return (
     <div style={{ width: "100vw", height: "100vh", overflow: "hidden", position: "relative" }}>
       <PhaserGame />
+      <InventoryHUD />
       <ShopBrowser />
       {pauseMenuOpen && <MainMenu />}
     </div>

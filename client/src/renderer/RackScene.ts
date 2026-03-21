@@ -181,11 +181,14 @@ export class RackScene extends Phaser.Scene {
         this.prevLinkIds.add(id);
     }
 
+    this.autoEnterPlacementMode();
+
     this.scale.on("resize", this.handleResize, this);
 
     // When scene wakes (returned to from WorldScene), refresh title and re-render
     this.events.on("wake", () => {
       this.updateRackTitle();
+      this.autoEnterPlacementMode();
       this.lastStateKey = ""; // force re-render
       const s = useGameStore.getState();
       if (s.state) {
@@ -252,9 +255,12 @@ export class RackScene extends Phaser.Scene {
         fontStyle: "bold",
         fontFamily: "'Nunito', sans-serif",
       })
-      .setOrigin(0.5, 0.5);
+      .setOrigin(0.5, 0.5)
+      .setResolution(2);
     this.rackTitle.setDepth(DEPTH.RACK_FRAME);
     this.rackLayer.add(this.rackTitle);
+
+    // Cable stock is shown in the React HUD overlay (InventoryHUD)
   }
 
   // ── U labels ─────────────────────────────────────────────────
@@ -269,7 +275,8 @@ export class RackScene extends Phaser.Scene {
             color: TEXT_COLORS.dim,
             fontFamily: "'JetBrains Mono', monospace",
           })
-          .setOrigin(1, 0.5);
+          .setOrigin(1, 0.5)
+          .setResolution(2);
         label.setDepth(DEPTH.RACK_FRAME);
         this.rackLayer.add(label);
       }
@@ -280,9 +287,11 @@ export class RackScene extends Phaser.Scene {
 
   private setupCamera() {
     const cam = this.cameras.main;
+    const dpr = window.devicePixelRatio || 1;
     const rackTotalH = RACK.HEIGHT + 40; // slots + title + padding
-    const viewH = this.scale.height;
-    const zoom = Math.min(1, viewH / rackTotalH);
+    // scale.height is in physical pixels (960*dpr x 540*dpr), convert to logical
+    const viewH = this.scale.height / dpr;
+    const zoom = Math.min(1, viewH / rackTotalH) * dpr;
     cam.setZoom(zoom);
     cam.setBounds(0, 0, 1200, rackTotalH + RACK_Y * 2);
     cam.centerOn(RACK_X + RACK.WIDTH / 2, RACK_Y + rackTotalH / 2);
@@ -305,7 +314,8 @@ export class RackScene extends Phaser.Scene {
         dz: number,
       ) => {
         const cam = this.cameras.main;
-        cam.setZoom(Phaser.Math.Clamp(cam.zoom - dz * 0.001, 0.5, 2.5));
+        const dpr = window.devicePixelRatio || 1;
+        cam.setZoom(Phaser.Math.Clamp(cam.zoom - dz * 0.001, 0.5 * dpr, 2.5 * dpr));
       },
     );
 
@@ -379,6 +389,22 @@ export class RackScene extends Phaser.Scene {
     if (rackId && state?.racks[rackId] && this.rackTitle) {
       this.rackTitle.setText(state.racks[rackId].name.toUpperCase());
     }
+  }
+
+  /** If the player is carrying a device, auto-enter placement mode */
+  private autoEnterPlacementMode() {
+    const store = useGameStore.getState();
+    const state = store.state;
+    if (!state) return;
+
+    const carryingId = state.world.player.carryingItemId;
+    if (!carryingId) return;
+
+    const item = state.world.items[carryingId];
+    if (!item || item.kind !== "device") return;
+
+    // Enter placement mode with the carried device's model
+    store.startPlacing(item.model);
   }
 
   /** Resolve the simulation rackId from the currently opened rack item */
@@ -1336,16 +1362,33 @@ export class RackScene extends Phaser.Scene {
       zone.on("pointerdown", () => {
         const currentStore = useGameStore.getState();
         if (!currentStore.placingModel) return;
-        const rackId = this.getOpenRackId();
-        if (!rackId) return;
+        const currentState = currentStore.state;
+        if (!currentState) return;
 
-        rpcClient
-          .call("placeDevice", {
-            rackId,
-            slotU: u,
-            model: currentStore.placingModel,
-          })
-          .catch(() => {});
+        // Check if player is carrying a device item → use installDevice
+        const carryingId = currentState.world.player.carryingItemId;
+        const carriedItem = carryingId ? currentState.world.items[carryingId] : null;
+
+        if (carriedItem?.kind === "device" && currentStore.openRackItemId) {
+          rpcClient
+            .call("installDevice", {
+              itemId: carriedItem.id,
+              rackItemId: currentStore.openRackItemId,
+              slotU: u,
+            })
+            .catch(() => {});
+        } else {
+          // Fallback: direct placement (old path)
+          const rackId = this.getOpenRackId();
+          if (!rackId) return;
+          rpcClient
+            .call("placeDevice", {
+              rackId,
+              slotU: u,
+              model: currentStore.placingModel,
+            })
+            .catch(() => {});
+        }
 
         currentStore.cancelPlacing();
       });

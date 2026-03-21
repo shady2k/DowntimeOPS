@@ -1,10 +1,15 @@
 import type { GameState, TutorialState, ObjectiveId } from "@downtime-ops/shared";
 
 const OBJECTIVE_DEFINITIONS = [
-  { id: "buy_router", title: "Install a Router", description: "Buy a router to connect to the internet" },
-  { id: "buy_switch", title: "Install a Switch", description: "Buy a switch to connect multiple devices" },
-  { id: "buy_server", title: "Install a Server", description: "Buy a server to host client services" },
-  { id: "connect_router_switch", title: "Connect Router to Switch", description: "Cable the router to the switch" },
+  { id: "visit_shop", title: "Visit the Shop", description: "Use the computer in the datacenter to open the shop" },
+  { id: "buy_rack", title: "Buy a Rack", description: "Order a 42U server rack from the shop" },
+  { id: "place_rack", title: "Place the Rack", description: "Pick up the rack from storage and place it in the datacenter" },
+  { id: "buy_equipment", title: "Buy Equipment", description: "Order a router, switch, and server from the shop" },
+  { id: "install_router", title: "Install the Router", description: "Carry the router to the rack and install it" },
+  { id: "install_switch", title: "Install the Switch", description: "Install the switch in the rack" },
+  { id: "install_server", title: "Install the Server", description: "Install the server in the rack" },
+  { id: "buy_cables", title: "Buy Cables", description: "Order Cat6 patch cables from the shop" },
+  { id: "connect_router_switch", title: "Connect Router to Switch", description: "Open the rack and cable the router to the switch" },
   { id: "connect_switch_server", title: "Connect Switch to Server", description: "Cable the switch to the server" },
   { id: "accept_client", title: "Accept a Client", description: "Accept a hosting contract to start earning revenue" },
   { id: "first_revenue", title: "Earn Revenue", description: "Complete a billing cycle with an active client" },
@@ -35,7 +40,6 @@ export function evaluateObjectives(state: GameState): GameState {
   const objectives = [...tutorial.objectives.map((o) => ({ ...o }))];
   let changed = false;
 
-  // Helper to complete an objective
   const complete = (id: string) => {
     const obj = objectives.find((o) => o.id === id);
     if (obj && !obj.completed) {
@@ -48,13 +52,43 @@ export function evaluateObjectives(state: GameState): GameState {
   const devices = Object.values(state.devices);
   const links = Object.values(state.links);
   const clients = Object.values(state.clients);
+  const items = Object.values(state.world.items);
 
-  // Check device placement objectives
-  if (devices.some((d) => d.type === "router")) complete("buy_router");
-  if (devices.some((d) => d.type === "switch")) complete("buy_switch");
-  if (devices.some((d) => d.type === "server")) complete("buy_server");
+  // --- World / shop objectives ---
 
-  // Check connection objectives - router connected to switch
+  // Visit shop: player has opened the shop at least once (any listing exists = shop was created)
+  // We detect this by checking if any item was ever purchased or if storage has had packages
+  const hasEverBought = items.length > 0;
+  if (hasEverBought) complete("visit_shop");
+
+  // Buy rack: any rack item exists
+  const hasRackItem = items.some((i) => i.kind === "rack");
+  if (hasRackItem) complete("buy_rack");
+
+  // Place rack: any rack is placed on the floor
+  const hasPlacedRack = items.some((i) => i.kind === "rack" && i.state === "placed");
+  if (hasPlacedRack) complete("place_rack");
+
+  // Buy equipment: player has bought at least one of each device type
+  const boughtModels = new Set(items.filter((i) => i.kind === "device").map((i) => i.model));
+  const hasRouter = boughtModels.has("router_1u") || devices.some((d) => d.type === "router");
+  const hasSwitch = boughtModels.has("switch_24p") || devices.some((d) => d.type === "switch");
+  const hasServer = boughtModels.has("server_1u") || devices.some((d) => d.type === "server");
+  if (hasRouter && hasSwitch && hasServer) complete("buy_equipment");
+
+  // Install devices: check simulation-layer devices
+  if (devices.some((d) => d.type === "router")) complete("install_router");
+  if (devices.some((d) => d.type === "switch")) complete("install_switch");
+  if (devices.some((d) => d.type === "server")) complete("install_server");
+
+  // Buy cables: any cable stock > 0
+  const cs = state.world.cableStock;
+  if (cs.cat6 > 0 || cs.cat6a > 0 || cs.om3_fiber > 0 || cs.os2_fiber > 0) {
+    complete("buy_cables");
+  }
+
+  // --- Network objectives ---
+
   const hasRouterSwitchLink = links.some((link) => {
     const devA = state.devices[link.portA.deviceId];
     const devB = state.devices[link.portB.deviceId];
@@ -66,7 +100,6 @@ export function evaluateObjectives(state: GameState): GameState {
   });
   if (hasRouterSwitchLink) complete("connect_router_switch");
 
-  // Check switch-server connection
   const hasSwitchServerLink = links.some((link) => {
     const devA = state.devices[link.portA.deviceId];
     const devB = state.devices[link.portB.deviceId];
@@ -78,20 +111,21 @@ export function evaluateObjectives(state: GameState): GameState {
   });
   if (hasSwitchServerLink) complete("connect_switch_server");
 
-  // Check client accepted
+  // --- Client / revenue objectives ---
+
   const hasActiveClient = clients.some(
     (c) => c.status === "active" || c.status === "warning",
   );
   if (hasActiveClient) complete("accept_client");
 
-  // Check first revenue
   let firstRevenueEarned = tutorial.firstRevenueEarned;
   if (!firstRevenueEarned && state.monthlyRevenue > 0) {
     firstRevenueEarned = true;
     complete("first_revenue");
   }
 
-  // Check network readiness
+  // survive_incident is completed in the repairPort action handler
+
   const networkReady =
     hasRouterSwitchLink &&
     hasSwitchServerLink &&
@@ -99,11 +133,7 @@ export function evaluateObjectives(state: GameState): GameState {
     devices.some((d) => d.type === "switch") &&
     devices.some((d) => d.type === "server");
 
-  // Check first client activated (for gating failures)
   const firstClientActivated = tutorial.firstClientActivated || hasActiveClient;
-
-  // survive_incident is completed when a port repair happens while clients are active.
-  // That is tracked in the repairPort action handler, not here.
 
   if (
     !changed &&
@@ -114,7 +144,6 @@ export function evaluateObjectives(state: GameState): GameState {
     return state;
   }
 
-  // Find current objective index (first incomplete)
   const currentObjectiveIndex = objectives.findIndex((o) => !o.completed);
   const tutorialComplete = objectives.every((o) => o.completed);
 

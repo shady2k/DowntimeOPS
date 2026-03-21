@@ -5,9 +5,11 @@ import type {
   ItemInstance,
   PlayerState,
   StoragePackage,
+  CableStock,
 } from "@downtime-ops/shared";
 import type { EngineResult } from "../index";
 import { TILE_SIZE } from "./worldFactory";
+import { CABLE_CATALOG } from "./shop";
 
 // --- Bespoke result type for batch purchase ---
 
@@ -538,10 +540,26 @@ export function buyCartItems(
   const newItems = { ...state.world.items };
   const newPackages: Record<string, StoragePackage> = { ...state.world.storage.packages };
   const newListings = { ...state.world.shop.listings };
+  const newCableStock: CableStock = { ...state.world.cableStock };
   let shelfIdx = 0;
+  let cablesPurchased = 0;
 
   for (const [listingId, qty] of normalized) {
     const listing = state.world.shop.listings[listingId];
+
+    // Cables go directly to cable stock (no physical item / storage)
+    if (listing.itemKind === "cable") {
+      const cableData = CABLE_CATALOG[listing.model];
+      if (cableData) {
+        newCableStock[cableData.cableType] += cableData.quantity * qty;
+        cablesPurchased += cableData.quantity * qty;
+      }
+      if (listing.stock !== null) {
+        newListings[listingId] = { ...listing, stock: listing.stock - qty };
+      }
+      continue;
+    }
+
     for (let i = 0; i < qty; i++) {
       const itemId = genId("item");
       purchasedItemIds.push(itemId);
@@ -582,6 +600,15 @@ export function buyCartItems(
     };
   }
 
+  // Build log message
+  const logParts: string[] = [];
+  if (purchasedItemIds.length > 0) {
+    logParts.push(`${purchasedItemIds.length} item(s) delivered to storage`);
+  }
+  if (cablesPurchased > 0) {
+    logParts.push(`${cablesPurchased} cable(s) added to supplies`);
+  }
+
   const newState: GameState = {
     ...state,
     money: state.money - totalCost,
@@ -591,13 +618,14 @@ export function buyCartItems(
       storage: { packages: newPackages },
       shop: { ...state.world.shop, listings: newListings },
       rooms: newRooms,
+      cableStock: newCableStock,
     },
     log: [
       ...state.log,
       {
         id: genId("log"),
         tick: state.tick,
-        message: `Ordered ${purchasedItemIds.length} item(s) for $${totalCost} — delivered to storage`,
+        message: `Ordered for $${totalCost} — ${logParts.join(", ")}`,
         category: "system" as const,
       },
     ],

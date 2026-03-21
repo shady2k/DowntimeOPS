@@ -5,6 +5,8 @@ import type {
 } from "@downtime-ops/shared";
 import pino from "pino";
 import { createInitialState, applyAction, BALANCE } from "./engine";
+import { createShop } from "./engine/world/shop";
+import { createInitialTutorial } from "./engine/simulation/objectives";
 import { handleRpcRequest, clearTracers, type GameServer } from "./rpc/handler";
 import { diffStates, isDiffEmpty } from "./sync/differ";
 import { hashState } from "./sync/hasher";
@@ -80,6 +82,26 @@ const gameServer: GameServer = {
     stopTickLoop();
     resetSessionState();
     gameState = await storage.load(saveId);
+    // Migrate old saves: reset tutorial if objective IDs changed
+    if (gameState.tutorial?.objectives?.[0]?.id === "buy_router") {
+      gameState = { ...gameState, tutorial: createInitialTutorial() };
+    }
+    // Migrate old saves: add cableStock and cable listings if missing
+    if (!gameState.world.cableStock) {
+      const freshShop = createShop();
+      const mergedListings = { ...gameState.world.shop.listings };
+      for (const [id, listing] of Object.entries(freshShop.listings)) {
+        if (!mergedListings[id]) mergedListings[id] = listing;
+      }
+      gameState = {
+        ...gameState,
+        world: {
+          ...gameState.world,
+          cableStock: { cat6: 0, cat6a: 0, om3_fiber: 0, os2_fiber: 0 },
+          shop: { ...gameState.world.shop, listings: mergedListings },
+        },
+      };
+    }
     previousState = gameState;
     log.info({ saveId }, "Game loaded");
     broadcastSnapshot();

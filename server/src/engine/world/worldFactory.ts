@@ -36,5 +36,6 @@ export function createInitialWorld(): WorldState {
     items: {},
     shop: createShop(),
     storage: { packages: {} },
+    cableStock: { cat6: 0, cat6a: 0, om3_fiber: 0, os2_fiber: 0 },
   };
 }

@@ -205,6 +205,7 @@ export function applyAction(state: GameState, action: Action): EngineResult {
         rackItem.installedInRackId,
         action.slotU,
         item.model,
+        true, // skipCost — already paid at shop
       );
     }
 
@@ -286,6 +287,7 @@ function placeDevice(
   rackId: string,
   slotU: number,
   model: string,
+  skipCost = false,
 ): EngineResult {
   const template = EQUIPMENT_CATALOG[model];
   if (!template) return { state, error: `Unknown equipment model: ${model}` };
@@ -308,8 +310,8 @@ function placeDevice(
     return { state, error: "Insufficient power budget" };
   }
 
-  // Check money
-  if (state.money < template.cost) {
+  // Check money (skip when installing from inventory — already paid at shop)
+  if (!skipCost && state.money < template.cost) {
     return { state, error: "Not enough money" };
   }
 
@@ -357,7 +359,7 @@ function placeDevice(
 
   const newState: GameState = {
     ...state,
-    money: state.money - template.cost,
+    money: skipCost ? state.money : state.money - template.cost,
     devices: { ...state.devices, [deviceId]: device },
     racks: {
       ...state.racks,
@@ -445,13 +447,32 @@ function removeDevice(state: GameState, deviceId: string): EngineResult {
   };
 }
 
+/** Determine the right cable type for a pair of port types */
+function resolveCableType(portTypeA: string, portTypeB: string): CableType {
+  // If either port is fiber, use fiber cable
+  if (portTypeA.startsWith("sfp") || portTypeA.startsWith("qsfp") ||
+      portTypeB.startsWith("sfp") || portTypeB.startsWith("qsfp")) {
+    // High-speed fiber uses OS2, lower uses OM3
+    if (portTypeA === "qsfp_40g" || portTypeB === "qsfp_40g" ||
+        portTypeA === "sfp_25g" || portTypeB === "sfp_25g") {
+      return "os2_fiber";
+    }
+    return "om3_fiber";
+  }
+  // Copper ports: 10G uses Cat6a, 1G uses Cat6
+  if (portTypeA === "copper_10g" || portTypeB === "copper_10g") {
+    return "cat6a";
+  }
+  return "cat6";
+}
+
 function connectPorts(
   state: GameState,
   deviceIdA: string,
   portIndexA: number,
   deviceIdB: string,
   portIndexB: number,
-  cableType: CableType,
+  _cableType: CableType,
 ): EngineResult {
   const devA = state.devices[deviceIdA];
   const devB = state.devices[deviceIdB];
@@ -466,6 +487,20 @@ function connectPorts(
   if (portA.linkId) return { state, error: `Port ${portIndexA} on ${devA.name} is already connected` };
   if (portB.linkId) return { state, error: `Port ${portIndexB} on ${devB.name} is already connected` };
 
+  // Auto-resolve the appropriate cable type based on port types
+  const resolvedCable = resolveCableType(portA.type, portB.type);
+
+  // Check cable stock
+  if (state.world.cableStock[resolvedCable] <= 0) {
+    const cableNames: Record<CableType, string> = {
+      cat6: "Cat6",
+      cat6a: "Cat6a",
+      om3_fiber: "OM3 Fiber",
+      os2_fiber: "OS2 Fiber",
+    };
+    return { state, error: `No ${cableNames[resolvedCable]} cables in stock — buy from shop` };
+  }
+
   const linkId = genId("link");
   const maxBandwidth = Math.min(
     PORT_SPEED[portA.type],
@@ -474,7 +509,7 @@ function connectPorts(
 
   const link: Link = {
     id: linkId,
-    type: cableType,
+    type: resolvedCable,
     portA: { deviceId: deviceIdA, portIndex: portIndexA },
     portB: { deviceId: deviceIdB, portIndex: portIndexB },
     maxBandwidthMbps: maxBandwidth,
@@ -492,6 +527,12 @@ function connectPorts(
     i === portIndexB ? { ...p, linkId } : p,
   );
 
+  // Consume one cable from stock
+  const newCableStock = {
+    ...state.world.cableStock,
+    [resolvedCable]: state.world.cableStock[resolvedCable] - 1,
+  };
+
   let newState: GameState = {
     ...state,
     links: { ...state.links, [linkId]: link },
@@ -499,6 +540,10 @@ function connectPorts(
       ...state.devices,
       [deviceIdA]: { ...devA, ports: newPortsA },
       [deviceIdB]: { ...devB, ports: newPortsB },
+    },
+    world: {
+      ...state.world,
+      cableStock: newCableStock,
     },
   };
 
