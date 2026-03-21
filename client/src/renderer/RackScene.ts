@@ -9,44 +9,30 @@ import { PerfMonitor } from "./PerfMonitor";
 
 // ── Layout constants ────────────────────────────────────────
 // Game logical resolution: 960×540 (scaled by DPR at runtime)
-const GAME_W = 960;
 const GAME_H = 540;
 const RACK_AREA_W = 576;     // rack occupies left 60% for positioning
 
 // ── Rack art positioning ────────────────────────────────────
-// rack-42u-empty.png is 1024×1536 (2:3 ratio)
-// Displayed at 400×600 in world space. The image has gray padding around the rack
-// body; the camera centers on the rack body and the padding goes off-screen.
-const RACK_IMG_W = 400;
-const RACK_IMG_H = 600; // 400 * (1536/1024) = 600
+// rack-42u-empty.png is 580×1460 (cropped to rack frame, no padding)
+// Display height fills ~95% of viewport, width derived from aspect ratio
+const RACK_IMG_H = 510;
+const RACK_IMG_W = Math.round(RACK_IMG_H * (580 / 1460)); // ~203
 
 // Position the rack image in world space (centered in left 60%)
-const RACK_X = Math.round((RACK_AREA_W - RACK_IMG_W) / 2); // ~88
-const RACK_Y = 20;
+const RACK_X = Math.round((RACK_AREA_W - RACK_IMG_W) / 2); // ~187
+const RACK_Y = Math.round((GAME_H - RACK_IMG_H) / 2);      // ~15
 
-// Inner bay area where devices sit (calibrated to rack-42u-empty.png)
-const RACK_BAY_LEFT = 92;     // pixels from rack left edge to inner bay left
-const RACK_BAY_WIDTH = 216;   // inner bay width in displayed pixels
-const RACK_BAY_TOP = 40;      // pixels from rack top to first slot (U1)
-const RACK_BAY_BOTTOM = 572;  // pixels from rack top to last slot bottom (U42)
-const RACK_U_HEIGHT = (RACK_BAY_BOTTOM - RACK_BAY_TOP) / RACK.TOTAL_U; // ~12.67 px per U
+// Inner bay area where devices sit (calibrated to cropped rack-42u-empty.png)
+const RACK_BAY_LEFT = Math.round(RACK_IMG_W * 0.066);   // ~13
+const RACK_BAY_WIDTH = Math.round(RACK_IMG_W * 0.869);  // ~176
+const RACK_BAY_TOP = Math.round(RACK_IMG_H * 0.029);    // ~15
+const RACK_BAY_BOTTOM = Math.round(RACK_IMG_H * 0.974); // ~497
+const RACK_U_HEIGHT = (RACK_BAY_BOTTOM - RACK_BAY_TOP) / RACK.TOTAL_U; // ~11.48 px per U
 
 // ── Zoom bands ──────────────────────────────────────────────
 // OVERVIEW is calculated dynamically in setupCameras() to fit the full rack.
 // These are the base ratios (before DPR multiplication).
-const ZOOM_BANDS = {
-  OVERVIEW: 0.85,   // full rack visible (recalculated at runtime)
-  HALF: 1.2,        // ~21 U visible
-  DEVICE: 2.0,      // ~7 U visible, device-level detail
-  PORT: 3.2,        // ~3 U visible, port-level detail
-} as const;
-
-const ZOOM_BAND_VALUES = [
-  ZOOM_BANDS.OVERVIEW,
-  ZOOM_BANDS.HALF,
-  ZOOM_BANDS.DEVICE,
-  ZOOM_BANDS.PORT,
-];
+// Two zoom modes: full rack visible, or zoomed so rack fills viewport width
 
 // ── Depth layers ────────────────────────────────────────────
 const DEPTH = {
@@ -308,10 +294,10 @@ export class RackScene extends Phaser.Scene {
   private setupCameras() {
     this.dpr = window.devicePixelRatio || 1;
 
-    // Single full-screen camera
+    // Rack camera — covers left 60%, clipped so zoom doesn't overflow into UI panel
     this.rackCam = this.cameras.main;
     this.rackCam.setBackgroundColor("#1a1410");
-    this.rackCam.setViewport(0, 0, GAME_W * this.dpr, GAME_H * this.dpr);
+    this.rackCam.setViewport(0, 0, Math.round(RACK_AREA_W * this.dpr), GAME_H * this.dpr);
 
     // Zoom to fit the full rack in the viewport
     const overviewZoom = this.getOverviewZoom();
@@ -356,6 +342,7 @@ export class RackScene extends Phaser.Scene {
       .setResolution(2)
       .setDepth(DEPTH.RACK_FRAME);
     this.rackLayer.add(this.rackTitle);
+
   }
 
   // ── U labels ──────────────────────────────────────────────
@@ -380,65 +367,43 @@ export class RackScene extends Phaser.Scene {
 
   // ── Input ─────────────────────────────────────────────────
 
+  private lastBgTapTime = 0;
+
   private setupInput() {
-    // Mouse wheel: zoom rack
-    this.input.on(
-      "wheel",
-      (
-        pointer: Phaser.Input.Pointer,
-        _gameObjects: unknown[],
-        _dx: number,
-        _dy: number,
-        dz: number,
-      ) => {
-        const cam = this.rackCam;
-        const direction = dz > 0 ? -1 : 1;
-        const oldZoom = cam.zoom;
-        const minZoom = this.getOverviewZoom() * this.dpr;
-        const maxZoom = ZOOM_BANDS.PORT * this.dpr;
-        let newZoom = Phaser.Math.Clamp(oldZoom * (1 + direction * 0.15), minZoom, maxZoom);
-
-        // Magnetic snap to bands
-        const normalizedZoom = newZoom / this.dpr;
-        for (const band of ZOOM_BAND_VALUES) {
-          if (Math.abs(normalizedZoom - band) < 0.08) {
-            newZoom = band * this.dpr;
-            break;
-          }
-        }
-
-        // Zoom toward cursor
-        const worldX = cam.scrollX + pointer.x / oldZoom;
-        const worldY = cam.scrollY + pointer.y / oldZoom;
-        cam.scrollX = worldX - pointer.x / newZoom;
-        cam.scrollY = worldY - pointer.y / newZoom;
-
-        this.animateZoomTo(newZoom, 100);
-      },
-    );
-
-    // Middle mouse pan
-    this.input.on("pointerdown", (pointer: Phaser.Input.Pointer) => {
-      if (pointer.middleButtonDown()) {
-        this.isPanning = true;
-        this.panStart.x = pointer.x;
-        this.panStart.y = pointer.y;
-        this.camStart.x = this.rackCam.scrollX;
-        this.camStart.y = this.rackCam.scrollY;
-      }
-    });
-
+    // Track mouse world position + drag-to-pan in close-up
     this.input.on("pointermove", (pointer: Phaser.Input.Pointer) => {
-      // Track mouse world position (for rack area)
       const worldPoint = this.rackCam.getWorldPoint(pointer.x, pointer.y);
       this.mouseWorldX = worldPoint.x;
       this.mouseWorldY = worldPoint.y;
 
       if (this.isPanning) {
-        const dx = (this.panStart.x - pointer.x) / this.rackCam.zoom;
+        // Vertical scroll only in close-up mode
         const dy = (this.panStart.y - pointer.y) / this.rackCam.zoom;
-        this.rackCam.scrollX = this.camStart.x + dx;
         this.rackCam.scrollY = this.camStart.y + dy;
+      }
+    });
+
+    // Left-click: start drag-to-pan in close-up, or double-click to toggle zoom
+    this.input.on("pointerdown", (pointer: Phaser.Input.Pointer) => {
+      if (!pointer.leftButtonDown()) return;
+
+      // Double-click detection → toggle zoom
+      const now = this.time.now;
+      if (now - this.lastBgTapTime < 300) {
+        const worldPoint = this.rackCam.getWorldPoint(pointer.x, pointer.y);
+        this.toggleZoom(worldPoint.y);
+        this.lastBgTapTime = 0;
+        return;
+      }
+      this.lastBgTapTime = now;
+
+      // Start drag-to-pan in close-up mode
+      if (this.isCloseUp()) {
+        this.isPanning = true;
+        this.panStart.x = pointer.x;
+        this.panStart.y = pointer.y;
+        this.camStart.x = this.rackCam.scrollX;
+        this.camStart.y = this.rackCam.scrollY;
       }
     });
 
@@ -449,28 +414,28 @@ export class RackScene extends Phaser.Scene {
       }
     });
 
-    // ESC handler
+    // Mouse wheel: scroll rack vertically in close-up mode
+    this.input.on("wheel", (
+      _pointer: Phaser.Input.Pointer,
+      _gameObjects: unknown[],
+      _dx: number, _dy: number, dz: number,
+    ) => {
+      if (!this.isCloseUp()) return;
+      this.rackCam.scrollY += dz * 0.5 / (this.rackCam.zoom / this.dpr);
+    });
+
+    // ESC: cancel interactions → zoom out → exit
     this.input.keyboard?.on("keydown-ESC", () => {
       const store = useGameStore.getState();
-
-      // Cancel active interactions
       if (this.draggingDevice) { this.cancelDrag(); return; }
       if (store.cablingFrom) { store.cancelCabling(); return; }
       if (store.placingModel) { store.cancelPlacing(); return; }
 
-      // If zoomed in, reset to overview
-      const currentZoom = this.rackCam.zoom / this.dpr;
-      const overviewZoom = this.getOverviewZoom();
-      if (currentZoom > overviewZoom + 0.1) {
-        this.animateCameraTo(
-          RACK_X + RACK_IMG_W / 2,
-          RACK_Y + RACK_IMG_H / 2,
-          overviewZoom * this.dpr,
-        );
+      if (this.isCloseUp()) {
+        this.zoomToOverview();
         return;
       }
 
-      // Exit rack scene
       store.closeRack();
       this.scene.sleep("RackUIScene");
       this.scene.sleep("RackScene");
@@ -499,21 +464,36 @@ export class RackScene extends Phaser.Scene {
     return Math.min(fitZoomX, fitZoomY);
   }
 
-  private animateZoomTo(targetZoom: number, duration = 200) {
-    this.zoomTween?.stop();
-    this.zoomTween = this.tweens.add({
-      targets: this.rackCam,
-      zoom: targetZoom,
-      duration,
-      ease: "Quad.easeOut",
-    });
+  private isCloseUp(): boolean {
+    return this.rackCam.zoom / this.dpr > this.getOverviewZoom() + 0.1;
+  }
+
+  /** Toggle between overview and close-up. When zooming in, center on worldY. */
+  public toggleZoom(worldY?: number) {
+    if (this.isCloseUp()) {
+      this.zoomToOverview();
+    } else {
+      // Fit the rack image width to the viewport (left 60%)
+      const closeZoom = RACK_AREA_W / (RACK_IMG_W + 10);
+      const centerX = RACK_X + RACK_IMG_W / 2;
+      const centerY = worldY ?? RACK_Y + RACK_IMG_H / 2;
+      this.animateCameraTo(centerX, centerY, closeZoom * this.dpr);
+    }
+  }
+
+  private zoomToOverview() {
+    this.animateCameraTo(
+      RACK_X + RACK_IMG_W / 2,
+      RACK_Y + RACK_IMG_H / 2,
+      this.getOverviewZoom() * this.dpr,
+    );
   }
 
   public animateCameraTo(
     centerX: number, centerY: number, zoom: number, duration = 300,
   ) {
     this.zoomTween?.stop();
-    const vpW = Math.round(GAME_W * this.dpr);
+    const vpW = Math.round(RACK_AREA_W * this.dpr);
     const vpH = Math.round(GAME_H * this.dpr);
     const targetScrollX = centerX - (vpW / zoom) / 2;
     const targetScrollY = centerY - (vpH / zoom) / 2;
@@ -947,9 +927,8 @@ export class RackScene extends Phaser.Scene {
     this.deviceLayer.add(container);
 
     // Progressive detail based on zoom
-    const currentZoom = this.rackCam.zoom / this.dpr;
-    const showLabels = currentZoom > 1.4;
-    const showPorts = currentZoom > 2.1;
+    const showLabels = this.isCloseUp();
+    const showPorts = this.isCloseUp();
 
     // Device body
     const typeColors: Record<string, number> = {
@@ -1022,14 +1001,12 @@ export class RackScene extends Phaser.Scene {
       const now = this.time.now;
       const store = useGameStore.getState();
 
-      // Double-click → zoom to device
+      // Double-click → toggle zoom centered on device
       if (
         this.lastDeviceClickId === device.id &&
         now - this.lastDeviceClickTime < 300
       ) {
-        const centerX = x + w / 2;
-        const centerY = y + h / 2;
-        this.animateCameraTo(centerX, centerY, ZOOM_BANDS.DEVICE * this.dpr);
+        this.toggleZoom(y + h / 2);
         this.lastDeviceClickTime = 0;
         return;
       }
