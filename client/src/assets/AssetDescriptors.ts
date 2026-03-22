@@ -72,4 +72,6 @@ export interface RackDescriptor {
     top: number;
     bottom: number;
   };
+  /** U-number label X as a fraction of displayed rack image width (right-aligned to this X) */
+  uLabelX: number;
 }

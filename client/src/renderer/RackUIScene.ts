@@ -6,6 +6,11 @@ import type { RackScene } from "./RackScene";
 
 // Layout constants (in logical coords — 960×540)
 const PANEL_X = 576; // right 40% starts here
+// Zoom button (positioned top-right of rack area)
+const ZOOM_BTN_W = 54;
+const ZOOM_BTN_H = 16;
+const ZOOM_BTN_X = PANEL_X - ZOOM_BTN_W - 6;
+const ZOOM_BTN_Y = 6;
 const PANEL_W = 384; // 960 - 576
 const PANEL_H = 540;
 const CARD_H = 52;
@@ -49,6 +54,9 @@ export class RackUIScene extends Phaser.Scene {
     originY: number;
   } | null = null;
 
+  private zoomBtnBg: Phaser.GameObjects.Graphics | null = null;
+  private zoomBtnLabel: Phaser.GameObjects.Text | null = null;
+
   private unsubscribe: (() => void) | null = null;
   private lastStateKey = "";
 
@@ -66,6 +74,7 @@ export class RackUIScene extends Phaser.Scene {
     cam.centerOn(480, 270);
 
     this.createPanel();
+    this.createZoomButton();
     this.setupInput();
 
     // Subscribe to store for inventory changes
@@ -97,9 +106,17 @@ export class RackUIScene extends Phaser.Scene {
       this.updateEconomy();
     }
 
+    // Hook up zoom change events from RackScene
+    this.time.delayedCall(0, () => {
+      const rs = this.scene.get("RackScene") as RackScene | null;
+      rs?.events.on("zoomChanged", this.updateZoomBtn, this);
+      this.updateZoomBtn();
+    });
+
     // Force refresh on wake
     this.events.on("wake", () => {
       this.lastStateKey = "";
+      this.updateZoomBtn();
       const s = useGameStore.getState();
       if (s.state) {
         this.updateInventory();
@@ -110,6 +127,52 @@ export class RackUIScene extends Phaser.Scene {
 
   shutdown() {
     this.unsubscribe?.();
+  }
+
+  private createZoomButton() {
+    const cx = ZOOM_BTN_X + ZOOM_BTN_W / 2;
+    const cy = ZOOM_BTN_Y + ZOOM_BTN_H / 2;
+
+    this.zoomBtnBg = this.add.graphics();
+    this.zoomBtnLabel = this.add
+      .text(cx, cy, "ZOOM IN", {
+        fontSize: "8px",
+        color: TEXT_COLORS.muted,
+        fontFamily: "'JetBrains Mono', monospace",
+      })
+      .setOrigin(0.5, 0.5)
+      .setResolution(2);
+
+    this.drawZoomBtn(0x252010);
+
+    const zone = this.add
+      .zone(cx, cy, ZOOM_BTN_W, ZOOM_BTN_H)
+      .setInteractive({ useHandCursor: true });
+
+    zone.on("pointerover", () => this.drawZoomBtn(0x3a3020));
+    zone.on("pointerout", () => this.drawZoomBtn(0x252010));
+    zone.on("pointerdown", () => {
+      const rs = this.scene.get("RackScene") as RackScene | null;
+      rs?.toggleZoom();
+    });
+  }
+
+  private drawZoomBtn(bgColor: number) {
+    if (!this.zoomBtnBg) return;
+    this.zoomBtnBg.clear();
+    this.zoomBtnBg.fillStyle(bgColor, 0.9);
+    this.zoomBtnBg.fillRoundedRect(ZOOM_BTN_X, ZOOM_BTN_Y, ZOOM_BTN_W, ZOOM_BTN_H, 3);
+    this.zoomBtnBg.lineStyle(1, 0x4a4030, 0.7);
+    this.zoomBtnBg.strokeRoundedRect(ZOOM_BTN_X, ZOOM_BTN_Y, ZOOM_BTN_W, ZOOM_BTN_H, 3);
+  }
+
+  private updateZoomBtn() {
+    if (!this.zoomBtnLabel) return;
+    const rs = this.scene.get("RackScene") as RackScene | null;
+    if (!rs) return;
+    const zoomed = rs.isCloseUp();
+    this.zoomBtnLabel.setText(zoomed ? "ZOOM OUT" : "ZOOM IN");
+    this.zoomBtnLabel.setColor(zoomed ? TEXT_COLORS.heading : TEXT_COLORS.muted);
   }
 
   private createPanel() {

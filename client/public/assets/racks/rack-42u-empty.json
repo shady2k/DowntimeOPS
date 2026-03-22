@@ -1,0 +1,12 @@
+{
+  "id": "rack-42u",
+  "textureKey": "rack-empty",
+  "totalU": 42,
+  "bay": {
+    "left": 0.203,
+    "right": 0.796,
+    "top": 0.089,
+    "bottom": 0.904
+  },
+  "uLabelX": -0.07
+}

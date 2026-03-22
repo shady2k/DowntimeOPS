@@ -13,22 +13,8 @@ import { PerfMonitor } from "./PerfMonitor";
 const GAME_H = 540;
 const RACK_AREA_W = 576;     // rack occupies left 60% for positioning
 
-// ── Rack art positioning ────────────────────────────────────
-// rack-42u-empty.png is 580×1460 (cropped to rack frame, no padding)
-// Display height fills ~95% of viewport, width derived from aspect ratio
-const RACK_IMG_H = 510;
-const RACK_IMG_W = Math.round(RACK_IMG_H * (580 / 1460)); // ~203
-
-// Position the rack image in world space (centered in left 60%)
-const RACK_X = Math.round((RACK_AREA_W - RACK_IMG_W) / 2); // ~187
-const RACK_Y = Math.round((GAME_H - RACK_IMG_H) / 2);      // ~15
-
-// Inner bay area where devices sit (calibrated to cropped rack-42u-empty.png)
-const RACK_BAY_LEFT = Math.round(RACK_IMG_W * 0.066);   // ~13
-const RACK_BAY_WIDTH = Math.round(RACK_IMG_W * 0.869);  // ~176
-const RACK_BAY_TOP = Math.round(RACK_IMG_H * 0.029);    // ~15
-const RACK_BAY_BOTTOM = Math.round(RACK_IMG_H * 0.974); // ~497
-const RACK_U_HEIGHT = (RACK_BAY_BOTTOM - RACK_BAY_TOP) / RACK.TOTAL_U; // ~11.48 px per U
+// Desired display height for the rack image (px, at logical resolution)
+const RACK_DISPLAY_H = 510;
 
 // ── Zoom bands ──────────────────────────────────────────────
 // OVERVIEW is calculated dynamically in setupCameras() to fit the full rack.
@@ -71,7 +57,7 @@ type FailureVfx = {
 
 type DeviceVisual = {
   container: Phaser.GameObjects.Container;
-  sprite: Phaser.GameObjects.Image;
+  sprite?: Phaser.GameObjects.Image;
   hitZone: Phaser.GameObjects.Zone;
 };
 
@@ -83,7 +69,23 @@ type PortHitZone = {
   worldY: number;
 };
 
+type RackLayout = {
+  imgW: number;
+  imgH: number;
+  x: number;
+  y: number;
+  bayLeft: number;
+  bayWidth: number;
+  bayTop: number;
+  bayBottom: number;
+  uHeight: number;
+  labelX: number;
+};
+
 export class RackScene extends Phaser.Scene {
+  // ── Rack layout (derived from texture + JSON descriptor in create()) ──
+  private rl!: RackLayout;
+
   // ── Camera ──────────────────────────────────────────────
   private rackCam!: Phaser.Cameras.Scene2D.Camera;
 
@@ -171,6 +173,7 @@ export class RackScene extends Phaser.Scene {
 
   create() {
     this.dpr = window.devicePixelRatio || 1;
+    this.rl = this.buildLayout();
 
     this.createLayers();
     this.setupCameras();
@@ -295,45 +298,49 @@ export class RackScene extends Phaser.Scene {
   private setupCameras() {
     this.dpr = window.devicePixelRatio || 1;
 
-    // Rack camera — covers left 60%, clipped so zoom doesn't overflow into UI panel
     this.rackCam = this.cameras.main;
     this.rackCam.setBackgroundColor("#1a1410");
-    this.rackCam.setViewport(0, 0, Math.round(RACK_AREA_W * this.dpr), GAME_H * this.dpr);
-
-    // Zoom to fit the full rack in the viewport
-    const overviewZoom = this.getOverviewZoom();
-    const zoom = overviewZoom * this.dpr;
-    this.rackCam.setZoom(zoom);
-
-    // Center camera on the rack
-    const rackCenterX = RACK_X + RACK_IMG_W / 2;
-    const rackCenterY = RACK_Y + RACK_IMG_H / 2;
-    this.rackCam.centerOn(rackCenterX, rackCenterY);
-
-    // Bounds allow scrolling with some margin around the rack
+    this.rackCam.setViewport(0, 0, Math.round(RACK_AREA_W * this.dpr), Math.round(GAME_H * this.dpr));
     this.rackCam.setBounds(
-      RACK_X - 50, RACK_Y - 50,
-      RACK_IMG_W + 100, RACK_IMG_H + 100,
+      0,
+      this.rl.y - 24,
+      RACK_AREA_W,
+      this.rl.imgH + 48,
     );
+
+    const { scrollX, scrollY } = this.getOverviewCameraState();
+    this.rackCam.setZoom(this.getOverviewZoom());
+    this.rackCam.setScroll(scrollX, scrollY);
   }
 
   private handleResize() {
+    const wasCloseUp = this.rackCam ? this.isCloseUp() : false;
+    const currentCenterY = this.rackCam
+      ? this.rackCam.scrollY + this.getViewportWorldSize(this.rackCam.zoom).height / 2
+      : this.rl.y + this.rl.imgH / 2;
+
     this.setupCameras();
+
+    if (wasCloseUp) {
+      const { scrollX, scrollY } = this.getCloseUpCameraState(currentCenterY);
+      this.rackCam.setZoom(this.getCloseUpZoom());
+      this.rackCam.setScroll(scrollX, scrollY);
+      this.events.emit("zoomChanged");
+    }
   }
 
   // ── Rack background ───────────────────────────────────────
 
   private createRackBackground() {
-    const rackKey = this.textures.exists("rack-empty") ? "rack-empty" : "rack-frame";
-    const rackImg = this.add.image(RACK_X, RACK_Y, rackKey)
+    const rackImg = this.add.image(this.rl.x, this.rl.y, "rack-empty")
       .setOrigin(0, 0)
-      .setDisplaySize(RACK_IMG_W, RACK_IMG_H)
+      .setDisplaySize(this.rl.imgW, this.rl.imgH)
       .setDepth(DEPTH.BACKGROUND);
     this.bgLayer.add(rackImg);
 
     // Rack title
     this.rackTitle = this.add
-      .text(RACK_X + RACK_IMG_W / 2, RACK_Y + 12, "RACK A", {
+      .text(this.rl.x + this.rl.imgW / 2, this.rl.y + 12, "RACK A", {
         fontSize: "10px",
         color: TEXT_COLORS.heading,
         fontStyle: "bold",
@@ -349,16 +356,17 @@ export class RackScene extends Phaser.Scene {
   // ── U labels ──────────────────────────────────────────────
 
   private createULabels() {
+    const labelX = this.rl.labelX;
     for (let u = 1; u <= RACK.TOTAL_U; u++) {
       if (u % 5 === 0 || u === 1) {
-        const y = this.slotY(u) + RACK_U_HEIGHT / 2;
+        const y = this.slotY(u) + this.rl.uHeight / 2;
         const label = this.add
-          .text(RACK_X + RACK_BAY_LEFT - 6, y, `${u}`, {
+          .text(labelX, y, `${u}`, {
             fontSize: "7px",
-            color: TEXT_COLORS.dim,
+            color: TEXT_COLORS.muted,
             fontFamily: "'JetBrains Mono', monospace",
           })
-          .setOrigin(1, 0.5)
+          .setOrigin(0.5, 0.5)
           .setResolution(2)
           .setDepth(DEPTH.RACK_FRAME);
         this.rackLayer.add(label);
@@ -380,7 +388,8 @@ export class RackScene extends Phaser.Scene {
       if (this.isPanning) {
         // Vertical scroll only in close-up mode
         const dy = (this.panStart.y - pointer.y) / this.rackCam.zoom;
-        this.rackCam.scrollY = this.camStart.y + dy;
+        const clamped = this.clampScrollToRack(this.rackCam.scrollX, this.camStart.y + dy, this.rackCam.zoom);
+        this.rackCam.scrollY = clamped.scrollY;
       }
     });
 
@@ -422,7 +431,9 @@ export class RackScene extends Phaser.Scene {
       _dx: number, _dy: number, dz: number,
     ) => {
       if (!this.isCloseUp()) return;
-      this.rackCam.scrollY += dz * 0.5 / (this.rackCam.zoom / this.dpr);
+      const nextScrollY = this.rackCam.scrollY + dz * 0.5 / (this.rackCam.zoom / this.dpr);
+      const clamped = this.clampScrollToRack(this.rackCam.scrollX, nextScrollY, this.rackCam.zoom);
+      this.rackCam.scrollY = clamped.scrollY;
     });
 
     // ESC: cancel interactions → zoom out → exit
@@ -459,64 +470,170 @@ export class RackScene extends Phaser.Scene {
   // ── Zoom helpers ──────────────────────────────────────────
 
   private getOverviewZoom(): number {
-    const margin = 20;
-    const fitZoomX = RACK_AREA_W / (RACK_IMG_W + margin);
-    const fitZoomY = GAME_H / (RACK_IMG_H + margin);
+    const marginX = 24;
+    const marginY = 24;
+    const fitZoomX = this.rackCam.width / (this.rl.imgW + marginX * 2);
+    const fitZoomY = this.rackCam.height / (this.rl.imgH + marginY * 2);
     return Math.min(fitZoomX, fitZoomY);
   }
 
-  private isCloseUp(): boolean {
-    return this.rackCam.zoom / this.dpr > this.getOverviewZoom() + 0.1;
+  private getCloseUpZoom(): number {
+    const horizontalPadding = 4;
+    return this.rackCam.width / (this.rl.imgW + horizontalPadding * 2);
   }
 
-  /** Toggle between overview and close-up. When zooming in, center on worldY. */
+  private getViewportWorldSize(zoom: number) {
+    return {
+      width: this.rackCam.width / zoom,
+      height: this.rackCam.height / zoom,
+    };
+  }
+
+  private clampScrollToRack(scrollX: number, scrollY: number, zoom: number) {
+    const marginX = 12;
+    const marginY = 12;
+    const { width, height } = this.getViewportWorldSize(zoom);
+
+    const clampAxis = (start: number, size: number, viewportSize: number, margin: number, value: number) => {
+      const min = start - margin;
+      const max = start + size + margin - viewportSize;
+      if (min <= max) return Phaser.Math.Clamp(value, min, max);
+      return start + size / 2 - viewportSize / 2;
+    };
+
+    return {
+      scrollX: clampAxis(this.rl.x, this.rl.imgW, width, marginX, scrollX),
+      scrollY: clampAxis(this.rl.y, this.rl.imgH, height, marginY, scrollY),
+    };
+  }
+
+  private getOverviewCameraState() {
+    const zoom = this.getOverviewZoom();
+    const { width, height } = this.getViewportWorldSize(zoom);
+    const scrollX = this.rl.x + this.rl.imgW / 2 - width / 2;
+    const scrollY = this.rl.y + this.rl.imgH / 2 - height / 2;
+    return this.clampScrollToRack(scrollX, scrollY, zoom);
+  }
+
+  private getCloseUpCameraState(focusY?: number) {
+    const zoom = this.getCloseUpZoom();
+    const horizontalPadding = 4;
+    const topPadding = 4;
+    const { height } = this.getViewportWorldSize(zoom);
+    const scrollX = this.rl.x - horizontalPadding;
+    const scrollY = focusY !== undefined
+      ? focusY - height / 2
+      : this.rl.y - topPadding;
+    return this.clampScrollToRack(scrollX, scrollY, zoom);
+  }
+
+  private getCameraCenterFromScroll(scrollX: number, scrollY: number, zoom: number) {
+    const { width, height } = this.getViewportWorldSize(zoom);
+    return {
+      centerX: scrollX + width / 2,
+      centerY: scrollY + height / 2,
+    };
+  }
+
+  public isCloseUp(): boolean {
+    return this.rackCam.zoom > this.getOverviewZoom() * 1.1;
+  }
+
+  /** Toggle between overview and close-up. When zooming in, snap to the clicked U-slot. */
   public toggleZoom(worldY?: number) {
     if (this.isCloseUp()) {
       this.zoomToOverview();
     } else {
-      // Fit the rack image width to the viewport (left 60%)
-      const closeZoom = RACK_AREA_W / (RACK_IMG_W + 10);
-      const centerX = RACK_X + RACK_IMG_W / 2;
-      const centerY = worldY ?? RACK_Y + RACK_IMG_H / 2;
-      this.animateCameraTo(centerX, centerY, closeZoom * this.dpr);
+      let focusY: number | undefined;
+      if (worldY !== undefined) {
+        const relY = worldY - this.rl.y - this.rl.bayTop;
+        const u = Math.max(1, Math.min(RACK.TOTAL_U, Math.floor(relY / this.rl.uHeight) + 1));
+        focusY = this.slotY(u) + this.rl.uHeight / 2;
+      }
+
+      const zoom = this.getCloseUpZoom();
+      const { scrollX, scrollY } = this.getCloseUpCameraState(focusY);
+      this.animateCameraTo(scrollX, scrollY, zoom);
     }
   }
 
   private zoomToOverview() {
-    this.animateCameraTo(
-      RACK_X + RACK_IMG_W / 2,
-      RACK_Y + RACK_IMG_H / 2,
-      this.getOverviewZoom() * this.dpr,
-    );
+    const zoom = this.getOverviewZoom();
+    const { scrollX, scrollY } = this.getOverviewCameraState();
+    this.animateCameraTo(scrollX, scrollY, zoom);
   }
 
   public animateCameraTo(
-    centerX: number, centerY: number, zoom: number, duration = 300,
+    scrollX: number, scrollY: number, zoom: number, duration = 300,
   ) {
     this.zoomTween?.stop();
-    const vpW = Math.round(RACK_AREA_W * this.dpr);
-    const vpH = Math.round(GAME_H * this.dpr);
-    const targetScrollX = centerX - (vpW / zoom) / 2;
-    const targetScrollY = centerY - (vpH / zoom) / 2;
+    this.isPanning = false;
+    const startZoom = this.rackCam.zoom;
+    const startCenter = this.getCameraCenterFromScroll(
+      this.rackCam.scrollX,
+      this.rackCam.scrollY,
+      this.rackCam.zoom,
+    );
+    const clamped = this.clampScrollToRack(scrollX, scrollY, zoom);
+    const targetCenter = this.getCameraCenterFromScroll(clamped.scrollX, clamped.scrollY, zoom);
+    const tweenState = { t: 0 };
 
     this.zoomTween = this.tweens.add({
-      targets: this.rackCam,
-      scrollX: targetScrollX,
-      scrollY: targetScrollY,
-      zoom,
+      targets: tweenState,
+      t: 1,
       duration,
       ease: "Quad.easeOut",
+      onUpdate: () => {
+        const nextZoom = Phaser.Math.Linear(startZoom, zoom, tweenState.t);
+        const nextCenterX = Phaser.Math.Linear(startCenter.centerX, targetCenter.centerX, tweenState.t);
+        const nextCenterY = Phaser.Math.Linear(startCenter.centerY, targetCenter.centerY, tweenState.t);
+        const { width, height } = this.getViewportWorldSize(nextZoom);
+        const next = this.clampScrollToRack(
+          nextCenterX - width / 2,
+          nextCenterY - height / 2,
+          nextZoom,
+        );
+        this.rackCam.setZoom(nextZoom);
+        this.rackCam.centerOn(next.scrollX + width / 2, next.scrollY + height / 2);
+      },
+      onComplete: () => {
+        this.rackCam.setZoom(zoom);
+        this.rackCam.centerOn(targetCenter.centerX, targetCenter.centerY);
+        this.events.emit("zoomChanged");
+      },
     });
   }
 
   // ── Coordinate helpers ────────────────────────────────────
 
   private slotY(u: number): number {
-    return RACK_Y + RACK_BAY_TOP + (u - 1) * RACK_U_HEIGHT;
+    return this.rl.y + this.rl.bayTop + (u - 1) * this.rl.uHeight;
   }
 
   private deviceX(): number {
-    return RACK_X + RACK_BAY_LEFT + 2;
+    return this.rl.x + this.rl.bayLeft + 2;
+  }
+
+  private buildLayout(): RackLayout {
+    const rackKey = "rack-empty";
+    const src = this.textures.get(rackKey).getSourceImage() as HTMLImageElement;
+    const desc = AssetRegistry.getRack("rack-42u");
+
+    const imgH = RACK_DISPLAY_H;
+    const imgW = Math.round(imgH * (src.width / src.height));
+    const x = Math.round((RACK_AREA_W - imgW) / 2);
+    const y = Math.round((GAME_H - imgH) / 2);
+
+    const bayLeft   = Math.round(imgW * (desc?.bay.left   ?? 0.066));
+    const bayRight  = Math.round(imgW * (desc?.bay.right  ?? 0.935));
+    const bayTop    = Math.round(imgH * (desc?.bay.top    ?? 0.029));
+    const bayBottom = Math.round(imgH * (desc?.bay.bottom ?? 0.974));
+    const bayWidth  = bayRight - bayLeft;
+    const totalU    = desc?.totalU ?? RACK.TOTAL_U;
+    const uHeight   = (bayBottom - bayTop) / totalU;
+    const labelX    = x + Math.round((desc?.uLabelX ?? 0.034) * imgW);
+
+    return { imgW, imgH, x, y, bayLeft, bayWidth, bayTop, bayBottom, uHeight, labelX };
   }
 
   private updateRackTitle() {
@@ -765,7 +882,7 @@ export class RackScene extends Phaser.Scene {
       const posB = this.getPortWorldPos(devB, link.portB.portIndex);
       if (!posA || !posB) continue;
 
-      const exitX = getCableExitX(RACK_X + RACK_IMG_W, posA.y, posB.y);
+      const exitX = getCableExitX(this.rl.x + this.rl.imgW, posA.y, posB.y);
       const pos = interpolateCablePath(posA, posB, exitX, pulse.progress);
 
       const size = 2 + (link.currentLoadMbps / Math.max(link.maxBandwidthMbps, 1)) * 2;
@@ -789,8 +906,8 @@ export class RackScene extends Phaser.Scene {
 
       const x = this.deviceX();
       const y = this.slotY(device.slotU) + 1;
-      const w = RACK_BAY_WIDTH - 4;
-      const h = device.uHeight * RACK_U_HEIGHT - 2;
+      const w = this.rl.bayWidth - 4;
+      const h = device.uHeight * this.rl.uHeight - 2;
 
       if (!vfx.visible) {
         this.effectGraphics.fillStyle(PALETTE.portDown, 0.15);
@@ -920,8 +1037,8 @@ export class RackScene extends Phaser.Scene {
   ): DeviceVisual {
     const x = this.deviceX();
     const y = this.slotY(device.slotU) + 1;
-    const h = device.uHeight * RACK_U_HEIGHT - 2;
-    const w = RACK_BAY_WIDTH - 4;
+    const h = device.uHeight * this.rl.uHeight - 2;
+    const w = this.rl.bayWidth - 4;
 
     const container = this.add.container(x, y);
     container.setDepth(DEPTH.DEVICES);
@@ -931,44 +1048,41 @@ export class RackScene extends Phaser.Scene {
     const showLabels = this.isCloseUp();
     const showPorts = this.isCloseUp();
 
-    // Device body
-    const typeColors: Record<string, number> = {
-      server: PALETTE.server,
-      switch: PALETTE.switch,
-      router: PALETTE.router,
-      firewall: PALETTE.firewall,
-    };
-    const faceColors: Record<string, number> = {
-      server: PALETTE.serverFace,
-      switch: PALETTE.switchFace,
-      router: PALETTE.routerFace,
-      firewall: PALETTE.firewallFace,
-    };
-    const baseColor = typeColors[device.type] ?? PALETTE.server;
-    const faceColor = faceColors[device.type] ?? PALETTE.serverFace;
-
-    const body = this.add.graphics();
-    body.fillStyle(baseColor, selected ? 1 : 0.85);
-    body.fillRoundedRect(0, 0, w, h, 2);
-    body.fillStyle(faceColor, selected ? 1 : 0.85);
-    body.fillRoundedRect(2, 1, w - 4, h - 2, 1);
-    container.add(body);
-
-    const sprite = this.add.image(0, 0, "__DEFAULT").setOrigin(0, 0).setVisible(false);
-    container.add(sprite);
-
-    if (selected) {
-      body.lineStyle(1.5, PALETTE.deviceSelected, 0.8);
-      body.strokeRoundedRect(0, 0, w, h, 2);
-    }
-
-    if (highlighted) {
-      body.lineStyle(1.5, PALETTE.highlight, 0.6);
-      body.strokeRoundedRect(-1, -1, w + 2, h + 2, 2);
-    }
-
-    // Status LED — position from descriptor, fallback to right edge
     const deviceDesc = AssetRegistry.getDevice(device.model);
+    const textureKey = deviceDesc?.textureKey ?? `device-${device.type}`;
+
+    // Show the device texture (PNG, SVG, or Graphics fallback — all registered
+    // under the same key by generateTextures). Stretch to fill the U slot.
+    let sprite: Phaser.GameObjects.Image | undefined;
+    if (this.textures.exists(textureKey)) {
+      sprite = this.add.image(0, 0, textureKey)
+        .setOrigin(0, 0)
+        .setDisplaySize(w, h);
+      container.add(sprite);
+    } else {
+      // No texture at all — simple colored fallback
+      const body = this.add.graphics();
+      body.fillStyle(PALETTE.switch, 0.85);
+      body.fillRoundedRect(0, 0, w, h, 2);
+      container.add(body);
+    }
+
+    // Selection / highlight borders always drawn on top
+    if (selected || highlighted) {
+      const border = this.add.graphics();
+      if (selected) {
+        border.lineStyle(1.5, PALETTE.deviceSelected, 0.8);
+        border.strokeRoundedRect(0, 0, w, h, 2);
+      }
+      if (highlighted) {
+        border.lineStyle(1.5, PALETTE.highlight, 0.6);
+        border.strokeRoundedRect(-1, -1, w + 2, h + 2, 2);
+      }
+      container.add(border);
+    }
+
+    // Status LED — drawn on top of the device texture.
+    // Position from descriptor, fallback to right edge.
     const statusLedX = deviceDesc ? Math.round(deviceDesc.statusLed.x * w) : w - 10;
     const statusLed = this.add.graphics();
     this.drawStatusLed(statusLed, device, statusLedX, h / 2);
@@ -1151,7 +1265,7 @@ export class RackScene extends Phaser.Scene {
   ) {
     // Port layout from descriptor, fallback to sensible defaults
     const deviceDesc = AssetRegistry.getDevice(device.model);
-    const devW = RACK_BAY_WIDTH - 4;
+    const devW = this.rl.bayWidth - 4;
     const portStartX = Math.round((deviceDesc?.portLayout.startX ?? 0.174) * devW);
     const maxVisible = Math.min(device.ports.length, deviceDesc?.portLayout.maxVisible ?? 24);
     const portSpacing = Math.min(PORT.SPACING, (devW - portStartX - 4) / Math.max(maxVisible, 1));
@@ -1327,8 +1441,8 @@ export class RackScene extends Phaser.Scene {
     this.previewGraphics.lineStyle(2, PALETTE.highlight, 0.5);
 
     const midX = Math.min(
-      RACK_X + RACK_IMG_W + 20 + Math.abs(sourcePos.y - this.mouseWorldY) * 0.25,
-      RACK_X + RACK_IMG_W + 100,
+      this.rl.x + this.rl.imgW + 20 + Math.abs(sourcePos.y - this.mouseWorldY) * 0.25,
+      this.rl.x + this.rl.imgW + 100,
     );
 
     this.previewGraphics.beginPath();
@@ -1390,7 +1504,7 @@ export class RackScene extends Phaser.Scene {
         : 0;
 
     const style = getCableStyle(utilization, link.status, isHighlighted, this.time.now);
-    const exitX = getCableExitX(RACK_X + RACK_IMG_W, posA.y, posB.y);
+    const exitX = getCableExitX(this.rl.x + this.rl.imgW, posA.y, posB.y);
     drawCablePath(this.cableGraphics, posA, posB, exitX, style);
   }
 
@@ -1399,9 +1513,9 @@ export class RackScene extends Phaser.Scene {
     portIndex: number,
   ): { x: number; y: number } | null {
     if (portIndex >= device.ports.length) return null;
-    const portSpacing = Math.min(PORT.SPACING, (RACK_BAY_WIDTH - 60) / Math.min(device.ports.length, 24));
+    const portSpacing = Math.min(PORT.SPACING, (this.rl.bayWidth - 60) / Math.min(device.ports.length, 24));
     const x = this.deviceX() + 30 + portIndex * portSpacing;
-    const h = device.uHeight * RACK_U_HEIGHT - 2;
+    const h = device.uHeight * this.rl.uHeight - 2;
     const y = this.slotY(device.slotU) + 1 + h / 2;
     return { x, y };
   }
@@ -1411,8 +1525,8 @@ export class RackScene extends Phaser.Scene {
   private startDragFromRack(device: Device, pointer: Phaser.Input.Pointer) {
     this.hideTooltip();
     const textureKey = `device-${device.type}`;
-    const w = RACK_BAY_WIDTH - 4;
-    const h = device.uHeight * RACK_U_HEIGHT - 2;
+    const w = this.rl.bayWidth - 4;
+    const h = device.uHeight * this.rl.uHeight - 2;
 
     const worldPoint = this.rackCam.getWorldPoint(pointer.x, pointer.y);
     const sprite = this.add
@@ -1431,8 +1545,8 @@ export class RackScene extends Phaser.Scene {
   }
 
   public getSlotAtPosition(worldY: number): number | null {
-    const relY = worldY - RACK_Y - RACK_BAY_TOP;
-    const u = Math.round(relY / RACK_U_HEIGHT) + 1;
+    const relY = worldY - this.rl.y - this.rl.bayTop;
+    const u = Math.round(relY / this.rl.uHeight) + 1;
     if (u < 1 || u > RACK.TOTAL_U) return null;
     return u;
   }
@@ -1471,10 +1585,10 @@ export class RackScene extends Phaser.Scene {
   }
 
   private isMouseOverRack(): boolean {
-    const rackLeft = RACK_X + RACK_BAY_LEFT;
-    const rackRight = RACK_X + RACK_BAY_LEFT + RACK_BAY_WIDTH;
-    const rackTop = RACK_Y + RACK_BAY_TOP;
-    const rackBottom = RACK_Y + RACK_BAY_BOTTOM;
+    const rackLeft = this.rl.x + this.rl.bayLeft;
+    const rackRight = this.rl.x + this.rl.bayLeft + this.rl.bayWidth;
+    const rackTop = this.rl.y + this.rl.bayTop;
+    const rackBottom = this.rl.y + this.rl.bayBottom;
     return (
       this.mouseWorldX >= rackLeft &&
       this.mouseWorldX <= rackRight &&

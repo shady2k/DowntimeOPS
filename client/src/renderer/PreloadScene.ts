@@ -1,6 +1,7 @@
 import Phaser from "phaser";
 import { generateTextures } from "./TextureGenerator";
 import { AssetRegistry } from "../assets/AssetRegistry";
+import { DEVICE_SVG_BUILDERS } from "./SvgDeviceGenerator";
 
 /**
  * Asset preload scene.
@@ -38,14 +39,23 @@ export class PreloadScene extends Phaser.Scene {
     this.load.json("bg-office", "assets/backgrounds/office.json");
 
     // Rack
-    img("rack-frame", "assets/racks/rack-frame-42u.png");
-    this.load.image("rack-empty", "assets/racks/rack-42u-empty.png");
+    img("rack-empty", "assets/racks/rack-42u-empty.png");
 
-    // Devices
-    img("device-server",   "assets/devices/device-server-1u.png");
-    img("device-switch",   "assets/devices/device-switch-24p.png");
-    img("device-router",   "assets/devices/device-router-1u.png");
-    img("device-firewall", "assets/devices/device-firewall-1u.png");
+    // Devices — SVG faceplates loaded directly under the main key.
+    // Phaser natively scales SVG textures; no canvas copy needed.
+    // To ship real art: remove the svg() call for that key and add img() instead.
+    const deviceFiles: Record<string, string> = {
+      "device-server":   "device-server-1u",
+      "device-switch":   "device-switch-24p",
+      "device-router":   "device-router-1u",
+      "device-firewall": "device-firewall-1u",
+    };
+    for (const [key, build] of Object.entries(DEVICE_SVG_BUILDERS)) {
+      const dataUrl = `data:image/svg+xml;base64,${btoa(build())}`;
+      this.load.svg(key, dataUrl, { width: 420, height: 18 });
+      // Descriptor JSON — different Phaser cache, same key is fine
+      this.load.json(key, `assets/devices/${deviceFiles[key]}.json`);
+    }
 
     // Player — single spritesheet: frame 0 = idle, frames 1-8 = walk
     this.load.spritesheet("player-walk", "assets/player/player-walk.png", {

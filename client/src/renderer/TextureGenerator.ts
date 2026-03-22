@@ -248,13 +248,17 @@ function generateDeviceTextures(scene: Phaser.Scene): void {
     faceColor: number;
     uHeight: number;
   }> = [
-    { key: "device-server", baseColor: PALETTE.server, faceColor: PALETTE.serverFace, uHeight: 1 },
-    { key: "device-switch", baseColor: PALETTE.switch, faceColor: PALETTE.switchFace, uHeight: 1 },
-    { key: "device-router", baseColor: PALETTE.router, faceColor: PALETTE.routerFace, uHeight: 1 },
+    { key: "device-server",   baseColor: PALETTE.server,   faceColor: PALETTE.serverFace,   uHeight: 1 },
+    { key: "device-switch",   baseColor: PALETTE.switch,   faceColor: PALETTE.switchFace,   uHeight: 1 },
+    { key: "device-router",   baseColor: PALETTE.router,   faceColor: PALETTE.routerFace,   uHeight: 1 },
     { key: "device-firewall", baseColor: PALETTE.firewall, faceColor: PALETTE.firewallFace, uHeight: 1 },
   ];
 
   for (const { key, baseColor, faceColor, uHeight } of types) {
+    // SVG or real PNG already loaded — skip
+    if (scene.textures.exists(key)) continue;
+
+    // Nothing loaded — generate with Graphics as last resort
     const w = RACK.INNER_WIDTH - 4;
     const h = uHeight * RACK.SLOT_HEIGHT - 2;
     const g = scene.make.graphics({ x: 0, y: 0 }, false);
