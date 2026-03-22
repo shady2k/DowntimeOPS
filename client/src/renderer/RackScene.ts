@@ -479,7 +479,7 @@ export class RackScene extends Phaser.Scene {
 
   private getCloseUpZoom(): number {
     const horizontalPadding = 4;
-    return this.rackCam.width / (this.rl.imgW + horizontalPadding * 2);
+    return this.rackCam.width / (this.rl.bayWidth + horizontalPadding * 2);
   }
 
   private getViewportWorldSize(zoom: number) {
@@ -520,7 +520,7 @@ export class RackScene extends Phaser.Scene {
     const horizontalPadding = 4;
     const topPadding = 4;
     const { height } = this.getViewportWorldSize(zoom);
-    const scrollX = this.rl.x - horizontalPadding;
+    const scrollX = this.rl.x + this.rl.bayLeft - horizontalPadding;
     const scrollY = focusY !== undefined
       ? focusY - height / 2
       : this.rl.y - topPadding;
@@ -1045,7 +1045,6 @@ export class RackScene extends Phaser.Scene {
     this.deviceLayer.add(container);
 
     // Progressive detail based on zoom
-    const showLabels = this.isCloseUp();
     const showPorts = this.isCloseUp();
 
     const deviceDesc = AssetRegistry.getDevice(device.model);
@@ -1087,19 +1086,6 @@ export class RackScene extends Phaser.Scene {
     const statusLed = this.add.graphics();
     this.drawStatusLed(statusLed, device, statusLedX, h / 2);
     container.add(statusLed);
-
-    // Labels at zoom > 1.4
-    if (showLabels) {
-      const label = this.add
-        .text(8, h / 2, device.name, {
-          fontSize: "7px",
-          color: TEXT_COLORS.primary,
-          fontFamily: "'Nunito', sans-serif",
-          fontStyle: "bold",
-        })
-        .setOrigin(0, 0.5);
-      container.add(label);
-    }
 
     // Ports at zoom > 2.1
     if (showPorts) {
@@ -1186,15 +1172,15 @@ export class RackScene extends Phaser.Scene {
             : PALETTE.portOff;
 
     if (device.status === "online") {
-      const glowPulse = 0.15 + Math.sin(this.time.now * 0.002) * 0.05;
+      const glowPulse = 0.12 + Math.sin(this.time.now * 0.002) * 0.04;
       g.fillStyle(color, glowPulse);
-      g.fillCircle(x, y, 4);
+      g.fillCircle(x, y, 2.5);
     }
 
     g.fillStyle(color, 1);
-    g.fillCircle(x, y, 2);
+    g.fillCircle(x, y, 1.5);
     g.fillStyle(0xffffff, 0.3);
-    g.fillCircle(x - 0.5, y - 0.5, 0.8);
+    g.fillCircle(x - 0.4, y - 0.4, 0.6);
   }
 
   // ── Tooltip ───────────────────────────────────────────────
@@ -1269,62 +1255,77 @@ export class RackScene extends Phaser.Scene {
     const portStartX = Math.round((deviceDesc?.portLayout.startX ?? 0.174) * devW);
     const maxVisible = Math.min(device.ports.length, deviceDesc?.portLayout.maxVisible ?? 24);
     const portSpacing = Math.min(PORT.SPACING, (devW - portStartX - 4) / Math.max(maxVisible, 1));
-    const portRadius = 3;
+    const portRadius = Math.min(2, portSpacing * 0.28);
     const portHitRadius = 8;
     const cablingFrom = store.cablingFrom;
     const isCabling = !!cablingFrom;
     const isSourceDevice = cablingFrom?.deviceId === device.id;
 
+    // Y for the LED row (from descriptor) vs Y for hit zones (port body center)
+    const portBodyY = (deviceDesc?.portLayout.startY ?? 0.5) * h;
+    const portLedY  = (deviceDesc?.portLayout.ledY  ?? deviceDesc?.portLayout.startY ?? 0.5) * h;
+
     for (let i = 0; i < maxVisible; i++) {
       const port = device.ports[i];
       const px = portStartX + i * portSpacing;
-      const py = h / 2;
 
-      // Port sprite
-      const portKey = this.getPortTextureKey(port);
-      const portImg = this.add.image(px, py, portKey)
-        .setScale(portRadius / PORT.RADIUS);
-      container.add(portImg);
+      // ── LED dot — tiny indicator driven entirely by port state ──
+      const ledColor =
+        port.status === "up"   ? PALETTE.portUp   :
+        port.status === "down" ? PALETTE.portDown  :
+        port.status === "err_disabled" ? PALETTE.portErr   :
+                                 PALETTE.portOff;
+      const ledAlpha = port.status === "up" ? 1 : 0.35;
 
-      // Connected overlay + blinking LED
-      if (port.linkId) {
-        const connImg = this.add.image(px, py, "port-connected")
-          .setScale(portRadius / PORT.RADIUS);
-        container.add(connImg);
+      const ledG = this.add.graphics();
 
+      // Subtle glow for active linked ports
+      if (port.linkId && port.status === "up") {
         const link = state.links[port.linkId];
-        if (link && link.currentLoadMbps > 0) {
-          const ledG = this.add.graphics();
-          const phase = this.portLedTimers.get(port.id) ?? 0;
-          const blinkAlpha = 0.3 + Math.sin(phase) * 0.3;
-          ledG.fillStyle(PALETTE.portUp, blinkAlpha);
-          ledG.fillCircle(px, py - portRadius - 2, 1);
-          container.add(ledG);
-        }
+        const phase = this.portLedTimers.get(port.id) ?? 0;
+        const blinkAlpha = link?.currentLoadMbps > 0
+          ? 0.15 + Math.sin(phase) * 0.1
+          : 0.08;
+        ledG.fillStyle(ledColor, blinkAlpha);
+        ledG.fillCircle(px, portLedY, portRadius * 2);
       }
 
-      // Cabling highlights
+      ledG.fillStyle(ledColor, ledAlpha);
+      ledG.fillCircle(px, portLedY, portRadius);
+      // Tiny specular highlight
+      ledG.fillStyle(0xffffff, 0.25);
+      ledG.fillCircle(px - portRadius * 0.3, portLedY - portRadius * 0.3, portRadius * 0.35);
+      container.add(ledG);
+
+      // ── Connection ring — shows a cable is plugged in ──
+      if (port.linkId) {
+        const ringG = this.add.graphics();
+        ringG.lineStyle(0.8, PALETTE.portUp, 0.5);
+        ringG.strokeCircle(px, portBodyY, portRadius + 1.5);
+        container.add(ringG);
+      }
+
+      // ── Cabling mode highlights ──
       if (isCabling) {
         const isSource = isSourceDevice && cablingFrom.portIndex === i;
-        const isValidTarget =
-          !isSourceDevice && !port.linkId && port.status === "up";
+        const isValidTarget = !isSourceDevice && !port.linkId && port.status === "up";
 
         if (isSource) {
-          const sourceG = this.add.graphics();
-          sourceG.lineStyle(1.5, PALETTE.highlight, 1);
-          sourceG.strokeCircle(px, py, portRadius + 2);
-          container.add(sourceG);
+          const g = this.add.graphics();
+          g.lineStyle(1.5, PALETTE.highlight, 1);
+          g.strokeCircle(px, portBodyY, portRadius + 2.5);
+          container.add(g);
         } else if (isValidTarget) {
-          const targetG = this.add.graphics();
-          targetG.lineStyle(1, PALETTE.portUp, 0.6);
-          targetG.strokeCircle(px, py, portRadius + 1.5);
-          container.add(targetG);
+          const g = this.add.graphics();
+          g.lineStyle(1, PALETTE.portUp, 0.7);
+          g.strokeCircle(px, portBodyY, portRadius + 2);
+          container.add(g);
         }
       }
 
-      // Port hit zone
+      // ── Hit zone (sized for comfortable clicking) ──
       const worldX = this.deviceX() + px;
-      const worldY = this.slotY(device.slotU) + 1 + py;
+      const worldY = this.slotY(device.slotU) + 1 + portBodyY;
 
       const portZone = this.add
         .zone(worldX, worldY, portHitRadius * 2, portHitRadius * 2)
@@ -1334,13 +1335,6 @@ export class RackScene extends Phaser.Scene {
       portZone.on("pointerdown", (pointer: Phaser.Input.Pointer) => {
         if (!pointer.leftButtonDown()) return;
         this.handlePortClick(device, port, i, state);
-      });
-
-      portZone.on("pointerover", () => {
-        portImg.setScale((portRadius / PORT.RADIUS) * 1.3);
-      });
-      portZone.on("pointerout", () => {
-        portImg.setScale(portRadius / PORT.RADIUS);
       });
 
       this.hitLayer.add(portZone);

@@ -364,7 +364,7 @@ function generatePortTextures(scene: Phaser.Scene): void {
 
     // Outer glow
     if (key === "port-up") {
-      g.fillStyle(color, 0.12);
+      g.fillStyle(color, 0.05);
       g.fillCircle(cx, cy, PORT.RADIUS + 2);
     }
 

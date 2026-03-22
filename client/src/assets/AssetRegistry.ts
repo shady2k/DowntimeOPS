@@ -30,9 +30,9 @@ class _AssetRegistry {
   register(data: unknown): void {
     if (!data || typeof data !== "object") return;
     const d = data as Record<string, unknown>;
-    if ("floorY" in d)    this.backgrounds.set(d.id as string, d as BackgroundDescriptor);
-    else if ("portLayout" in d) this.devices.set(d.id as string, d as DeviceDescriptor);
-    else if ("bay" in d)  this.racks.set(d.id as string, d as RackDescriptor);
+    if ("floorY" in d)         this.backgrounds.set(d.id as string, d as unknown as BackgroundDescriptor);
+    else if ("portLayout" in d) this.devices.set(d.id as string, d as unknown as DeviceDescriptor);
+    else if ("bay" in d)        this.racks.set(d.id as string, d as unknown as RackDescriptor);
   }
 
   /** Look up by descriptor id, e.g. "bg-checkpoint" */

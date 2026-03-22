@@ -5,11 +5,12 @@
   "portLayout": {
     "startX": 0.174,
     "startY": 0.5,
+    "ledY": 0.53,
     "maxVisible": 24
   },
   "statusLed": {
     "id": "status",
-    "x": 0.942,
+    "x": 0.155,
     "y": 0.5
   }
 }

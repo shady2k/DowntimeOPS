@@ -3,13 +3,14 @@
   "textureKey": "device-router",
   "uHeight": 1,
   "portLayout": {
-    "startX": 0.174,
+    "startX": 0.19,
     "startY": 0.5,
-    "maxVisible": 24
+    "ledY": 0.11,
+    "maxVisible": 4
   },
   "statusLed": {
     "id": "status",
-    "x": 0.942,
+    "x": 0.155,
     "y": 0.5
   }
 }

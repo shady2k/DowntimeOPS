@@ -1,7 +1,7 @@
 import Phaser from "phaser";
 import { generateTextures } from "./TextureGenerator";
 import { AssetRegistry } from "../assets/AssetRegistry";
-import { DEVICE_SVG_BUILDERS } from "./SvgDeviceGenerator";
+import { DEVICE_SVG_BUILDERS } from "./devices";
 
 /**
  * Asset preload scene.
@@ -52,7 +52,7 @@ export class PreloadScene extends Phaser.Scene {
     };
     for (const [key, build] of Object.entries(DEVICE_SVG_BUILDERS)) {
       const dataUrl = `data:image/svg+xml;base64,${btoa(build())}`;
-      this.load.svg(key, dataUrl, { width: 420, height: 18 });
+      this.load.svg(key, dataUrl, { width: 1680, height: 72 });
       // Descriptor JSON — different Phaser cache, same key is fine
       this.load.json(key, `assets/devices/${deviceFiles[key]}.json`);
     }

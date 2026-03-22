@@ -24,8 +24,14 @@ export interface BackgroundDescriptor {
 export interface PortLayoutDescriptor {
   /** X of first port as a fraction of the device's rendered width */
   startX: number;
-  /** Y center of port row as a fraction of the device's rendered height */
+  /** Y center of port body row — used for hit zones and cabling highlights */
   startY: number;
+  /**
+   * Y of the per-port LED indicator row, as a fraction of device height.
+   * Defaults to startY when omitted (LEDs sit at the port center).
+   * Use a smaller value (e.g. 0.11) when LEDs sit above the port row.
+   */
+  ledY?: number;
   /** Maximum number of ports to show in rack view before showing overflow label */
   maxVisible: number;
 }
