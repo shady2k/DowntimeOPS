@@ -1,7 +1,9 @@
 import Phaser from "phaser";
-import type { WorldState, ItemInstance, RoomId, RoomKind, Interactable } from "@downtime-ops/shared";
+import type { WorldState, ItemInstance, RoomId, Interactable } from "@downtime-ops/shared";
 import { useGameStore } from "../../store/gameStore";
 import { rpcClient } from "../../rpc/client";
+import { AssetRegistry } from "../../assets/AssetRegistry";
+import type { BackgroundDescriptor } from "../../assets/AssetDescriptors";
 
 /**
  * Side-view explorable world scene.
@@ -17,25 +19,11 @@ const GAME_H = 540;
 
 const PLAYER_SPEED = 200;
 
-// --- Client-only rendering config (mapped by room kind) ---
-
-interface RenderConfig {
-  backgroundKey: string;
-  floorY: number;
-  playerScale: number;
-}
-
-const RENDER_BY_KIND: Record<RoomKind, RenderConfig> = {
-  checkpoint: { backgroundKey: "bg-checkpoint", floorY: GAME_H * 0.72, playerScale: 90 },
-  yard: { backgroundKey: "bg-yard", floorY: GAME_H * 0.72, playerScale: 90 },
-  storage: { backgroundKey: "bg-storage", floorY: GAME_H * 0.92, playerScale: 140 },
-  datacenter: { backgroundKey: "bg-datacenter", floorY: GAME_H * 0.85, playerScale: 100 },
-  office: { backgroundKey: "bg-datacenter", floorY: GAME_H * 0.85, playerScale: 100 },
-};
-
-const DEFAULT_RENDER: RenderConfig = {
-  backgroundKey: "room-bg",
-  floorY: GAME_H * 0.85,
+/** Fallback descriptor when a room kind has no registered background asset */
+const DEFAULT_BACKGROUND: BackgroundDescriptor = {
+  id: "bg-default",
+  textureKey: "room-bg",
+  floorY: 0.85,
   playerScale: 90,
 };
 
@@ -86,11 +74,17 @@ export class WorldScene extends Phaser.Scene {
     super({ key: "WorldScene" });
   }
 
-  private getRender(): RenderConfig {
+  private getRender(): { textureKey: string; floorY: number; playerScale: number } {
     const world = useGameStore.getState().state?.world;
     const room = world?.rooms[this.currentRoom];
-    if (room) return RENDER_BY_KIND[room.kind] ?? DEFAULT_RENDER;
-    return DEFAULT_RENDER;
+    const desc = room
+      ? (AssetRegistry.getBackground(`bg-${room.kind}`) ?? DEFAULT_BACKGROUND)
+      : DEFAULT_BACKGROUND;
+    return {
+      textureKey: desc.textureKey,
+      floorY: desc.floorY * GAME_H,
+      playerScale: desc.playerScale,
+    };
   }
 
   create() {
@@ -176,8 +170,8 @@ export class WorldScene extends Phaser.Scene {
 
     // Swap background
     const render = this.getRender();
-    if (this.textures.exists(render.backgroundKey)) {
-      this.bgSprite.setTexture(render.backgroundKey);
+    if (this.textures.exists(render.textureKey)) {
+      this.bgSprite.setTexture(render.textureKey);
       this.bgSprite.setDisplaySize(GAME_W, GAME_H);
     }
 

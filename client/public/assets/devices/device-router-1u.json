@@ -1,0 +1,15 @@
+{
+  "id": "router_1u",
+  "textureKey": "device-router",
+  "uHeight": 1,
+  "portLayout": {
+    "startX": 0.174,
+    "startY": 0.5,
+    "maxVisible": 24
+  },
+  "statusLed": {
+    "id": "status",
+    "x": 0.942,
+    "y": 0.5
+  }
+}

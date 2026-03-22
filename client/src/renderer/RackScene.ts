@@ -3,6 +3,7 @@ import type { GameState, Device, Port, Link, CableType } from "@downtime-ops/sha
 import { useGameStore } from "../store/gameStore";
 import { rpcClient } from "../rpc/client";
 import { RACK, PORT, PALETTE, TEXT_COLORS } from "./TextureGenerator";
+import { AssetRegistry } from "../assets/AssetRegistry";
 import { emitAudioEvent } from "./AudioEvents";
 import { getCableStyle, getCableExitX, drawCablePath, interpolateCablePath, getPulseColor } from "./CablePrefab";
 import { PerfMonitor } from "./PerfMonitor";
@@ -966,9 +967,11 @@ export class RackScene extends Phaser.Scene {
       body.strokeRoundedRect(-1, -1, w + 2, h + 2, 2);
     }
 
-    // Status LED
+    // Status LED — position from descriptor, fallback to right edge
+    const deviceDesc = AssetRegistry.getDevice(device.model);
+    const statusLedX = deviceDesc ? Math.round(deviceDesc.statusLed.x * w) : w - 10;
     const statusLed = this.add.graphics();
-    this.drawStatusLed(statusLed, device, w - 10, h / 2);
+    this.drawStatusLed(statusLed, device, statusLedX, h / 2);
     container.add(statusLed);
 
     // Labels at zoom > 1.4
@@ -1146,13 +1149,14 @@ export class RackScene extends Phaser.Scene {
     state: GameState,
     store: ReturnType<typeof useGameStore.getState>,
   ) {
-    // Scaled port constants for narrower devices
-    const portStartX = 30;
-    const portSpacing = Math.min(PORT.SPACING, (RACK_BAY_WIDTH - 60) / Math.min(device.ports.length, 24));
+    // Port layout from descriptor, fallback to sensible defaults
+    const deviceDesc = AssetRegistry.getDevice(device.model);
+    const devW = RACK_BAY_WIDTH - 4;
+    const portStartX = Math.round((deviceDesc?.portLayout.startX ?? 0.174) * devW);
+    const maxVisible = Math.min(device.ports.length, deviceDesc?.portLayout.maxVisible ?? 24);
+    const portSpacing = Math.min(PORT.SPACING, (devW - portStartX - 4) / Math.max(maxVisible, 1));
     const portRadius = 3;
     const portHitRadius = 8;
-
-    const maxVisible = Math.min(device.ports.length, 24);
     const cablingFrom = store.cablingFrom;
     const isCabling = !!cablingFrom;
     const isSourceDevice = cablingFrom?.deviceId === device.id;

@@ -1,5 +1,6 @@
 import Phaser from "phaser";
 import { generateTextures } from "./TextureGenerator";
+import { AssetRegistry } from "../assets/AssetRegistry";
 
 /**
  * Asset preload scene.
@@ -21,23 +22,30 @@ export class PreloadScene extends Phaser.Scene {
   }
 
   preload() {
-    // ── File-based asset loading ──
+    // img() loads the PNG and its co-located .json descriptor in one call.
+    // Phaser keeps textures and JSON in separate caches — same key, no collision.
+    const img = (key: string, path: string) => {
+      this.load.image(key, path);
+      this.load.json(key, path.replace(/\.[^.]+$/, ".json"));
+    };
 
-    // Backgrounds (one per location)
-    this.load.image("bg-checkpoint", "assets/backgrounds/checkpoint.png");
-    this.load.image("bg-yard", "assets/backgrounds/yard.png");
-    this.load.image("bg-storage", "assets/backgrounds/storage.png");
-    this.load.image("bg-datacenter", "assets/backgrounds/datacenter-interior.png");
+    // Backgrounds
+    img("bg-checkpoint", "assets/backgrounds/checkpoint.png");
+    img("bg-yard",       "assets/backgrounds/yard.png");
+    img("bg-storage",    "assets/backgrounds/storage.png");
+    img("bg-datacenter", "assets/backgrounds/datacenter-interior.png");
+    // Office shares the datacenter image but has its own floorY/playerScale descriptor
+    this.load.json("bg-office", "assets/backgrounds/office.json");
 
     // Rack
-    this.load.image("rack-frame", "assets/racks/rack-frame-42u.png");
+    img("rack-frame", "assets/racks/rack-frame-42u.png");
     this.load.image("rack-empty", "assets/racks/rack-42u-empty.png");
 
     // Devices
-    this.load.image("device-server", "assets/devices/device-server-1u.png");
-    this.load.image("device-switch", "assets/devices/device-switch-24p.png");
-    this.load.image("device-router", "assets/devices/device-router-1u.png");
-    this.load.image("device-firewall", "assets/devices/device-firewall-1u.png");
+    img("device-server",   "assets/devices/device-server-1u.png");
+    img("device-switch",   "assets/devices/device-switch-24p.png");
+    img("device-router",   "assets/devices/device-router-1u.png");
+    img("device-firewall", "assets/devices/device-firewall-1u.png");
 
     // Player — single spritesheet: frame 0 = idle, frames 1-8 = walk
     this.load.spritesheet("player-walk", "assets/player/player-walk.png", {
@@ -46,9 +54,9 @@ export class PreloadScene extends Phaser.Scene {
     });
 
     // UI
-    this.load.image("ui-panel-bg", "assets/ui/panel-bg.png");
+    this.load.image("ui-panel-bg",   "assets/ui/panel-bg.png");
     this.load.image("ui-shelf-tray", "assets/ui/shelf-tray.png");
-    this.load.image("ui-logo", "assets/ui/logo.png");
+    this.load.image("ui-logo",       "assets/ui/logo.png");
 
     // ── Not yet available — uncomment when ready ──
     //
@@ -84,6 +92,12 @@ export class PreloadScene extends Phaser.Scene {
   }
 
   create() {
+    // Register every loaded JSON descriptor. AssetRegistry.register() auto-detects
+    // type by shape — no manual routing needed when new assets are added.
+    for (const key of this.cache.json.getKeys()) {
+      AssetRegistry.register(this.cache.json.get(key));
+    }
+
     // Generate placeholder textures for any keys not yet loaded from files
     generateTextures(this);
 
