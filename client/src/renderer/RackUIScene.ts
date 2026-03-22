@@ -11,6 +11,11 @@ const ZOOM_BTN_W = 54;
 const ZOOM_BTN_H = 16;
 const ZOOM_BTN_X = PANEL_X - ZOOM_BTN_W - 6;
 const ZOOM_BTN_Y = 6;
+const SCROLL_BTN_W = 26;
+const SCROLL_BTN_H = 16;
+const SCROLL_UP_BTN_X = ZOOM_BTN_X - SCROLL_BTN_W - 4;
+const SCROLL_DOWN_BTN_X = SCROLL_UP_BTN_X - SCROLL_BTN_W - 4;
+const SCROLL_BTN_Y = ZOOM_BTN_Y;
 const PANEL_W = 384; // 960 - 576
 const PANEL_H = 540;
 const CARD_H = 52;
@@ -56,6 +61,10 @@ export class RackUIScene extends Phaser.Scene {
 
   private zoomBtnBg: Phaser.GameObjects.Graphics | null = null;
   private zoomBtnLabel: Phaser.GameObjects.Text | null = null;
+  private scrollUpBtnBg: Phaser.GameObjects.Graphics | null = null;
+  private scrollUpBtnLabel: Phaser.GameObjects.Text | null = null;
+  private scrollDownBtnBg: Phaser.GameObjects.Graphics | null = null;
+  private scrollDownBtnLabel: Phaser.GameObjects.Text | null = null;
 
   private unsubscribe: (() => void) | null = null;
   private lastStateKey = "";
@@ -75,6 +84,7 @@ export class RackUIScene extends Phaser.Scene {
 
     this.createPanel();
     this.createZoomButton();
+    this.createScrollButtons();
     this.setupInput();
 
     // Subscribe to store for inventory changes
@@ -151,10 +161,84 @@ export class RackUIScene extends Phaser.Scene {
 
     zone.on("pointerover", () => this.drawZoomBtn(0x3a3020));
     zone.on("pointerout", () => this.drawZoomBtn(0x252010));
-    zone.on("pointerdown", () => {
+    zone.on("pointerdown", (
+      _pointer: Phaser.Input.Pointer,
+      _localX: number,
+      _localY: number,
+      event: Phaser.Types.Input.EventData,
+    ) => {
+      event.stopPropagation();
       const rs = this.scene.get("RackScene") as RackScene | null;
       rs?.toggleZoom();
     });
+  }
+
+  private createScrollButtons() {
+    const buttons = [
+      {
+        x: SCROLL_UP_BTN_X,
+        label: "UP",
+        onClick: () => {
+          const rs = this.scene.get("RackScene") as RackScene | null;
+          rs?.pageScroll(-1);
+        },
+      },
+      {
+        x: SCROLL_DOWN_BTN_X,
+        label: "DN",
+        onClick: () => {
+          const rs = this.scene.get("RackScene") as RackScene | null;
+          rs?.pageScroll(1);
+        },
+      },
+    ];
+
+    for (const button of buttons) {
+      const cx = button.x + SCROLL_BTN_W / 2;
+      const cy = SCROLL_BTN_Y + SCROLL_BTN_H / 2;
+      const bg = this.add.graphics();
+      const label = this.add
+        .text(cx, cy, button.label, {
+          fontSize: "8px",
+          color: TEXT_COLORS.muted,
+          fontFamily: "'JetBrains Mono', monospace",
+        })
+        .setOrigin(0.5, 0.5)
+        .setResolution(2);
+
+      const draw = (bgColor: number) => {
+        bg.clear();
+        bg.fillStyle(bgColor, 0.9);
+        bg.fillRoundedRect(button.x, SCROLL_BTN_Y, SCROLL_BTN_W, SCROLL_BTN_H, 3);
+        bg.lineStyle(1, 0x4a4030, 0.7);
+        bg.strokeRoundedRect(button.x, SCROLL_BTN_Y, SCROLL_BTN_W, SCROLL_BTN_H, 3);
+      };
+
+      draw(0x252010);
+
+      const zone = this.add
+        .zone(cx, cy, SCROLL_BTN_W, SCROLL_BTN_H)
+        .setInteractive({ useHandCursor: true });
+      zone.on("pointerover", () => draw(0x3a3020));
+      zone.on("pointerout", () => draw(0x252010));
+      zone.on("pointerdown", (
+        _pointer: Phaser.Input.Pointer,
+        _localX: number,
+        _localY: number,
+        event: Phaser.Types.Input.EventData,
+      ) => {
+        event.stopPropagation();
+        button.onClick();
+      });
+
+      if (button.label === "UP") {
+        this.scrollUpBtnBg = bg;
+        this.scrollUpBtnLabel = label;
+      } else {
+        this.scrollDownBtnBg = bg;
+        this.scrollDownBtnLabel = label;
+      }
+    }
   }
 
   private drawZoomBtn(bgColor: number) {
@@ -173,6 +257,8 @@ export class RackUIScene extends Phaser.Scene {
     const zoomed = rs.isCloseUp();
     this.zoomBtnLabel.setText(zoomed ? "ZOOM OUT" : "ZOOM IN");
     this.zoomBtnLabel.setColor(zoomed ? TEXT_COLORS.heading : TEXT_COLORS.muted);
+    this.scrollUpBtnLabel?.setColor(zoomed ? TEXT_COLORS.heading : TEXT_COLORS.dim);
+    this.scrollDownBtnLabel?.setColor(zoomed ? TEXT_COLORS.heading : TEXT_COLORS.dim);
   }
 
   private createPanel() {
@@ -231,15 +317,15 @@ export class RackUIScene extends Phaser.Scene {
         pointer: Phaser.Input.Pointer,
         _gameObjects: unknown[],
         _dx: number,
-        _dy: number,
-        dz: number,
+        dy: number,
+        _dz: number,
       ) => {
         // Only scroll if pointer is over the panel
         const px = pointer.x / this.dpr;
         if (px < PANEL_X) return;
 
         this.scrollOffset = Phaser.Math.Clamp(
-          this.scrollOffset + dz * 0.5,
+          this.scrollOffset + dy * 0.5,
           0,
           Math.max(0, this.maxScroll),
         );
@@ -255,10 +341,22 @@ export class RackUIScene extends Phaser.Scene {
       const wx = pointer.x / this.dpr;
       const wy = pointer.y / this.dpr;
       this.dragging.sprite.setPosition(wx, wy);
+
+      // Show slot highlight in RackScene when hovering over rack area
+      const rackScene = this.scene.get("RackScene") as RackScene | null;
+      if (rackScene) {
+        if (wx < PANEL_X) {
+          rackScene.showDragSlotPreview(pointer.x, pointer.y);
+        } else {
+          rackScene.clearDragSlotPreview();
+        }
+      }
     });
 
     this.input.on("pointerup", () => {
       if (!this.dragging) return;
+      const rackScene = this.scene.get("RackScene") as RackScene | null;
+      rackScene?.clearDragSlotPreview();
       this.handleDrop();
     });
   }

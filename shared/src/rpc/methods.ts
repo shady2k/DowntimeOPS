@@ -16,6 +16,10 @@ export interface RemoveDeviceParams {
   deviceId: string;
 }
 
+export interface UninstallDeviceParams {
+  deviceId: string;
+}
+
 export interface ConnectPortsParams {
   portA: string;
   portB: string;
@@ -154,6 +158,7 @@ export interface BuyCartItemsResult {
 export interface RpcMethods {
   placeDevice: { params: PlaceDeviceParams; result: PlaceDeviceResult };
   removeDevice: { params: RemoveDeviceParams; result: void };
+  uninstallDevice: { params: UninstallDeviceParams; result: void };
   connectPorts: { params: ConnectPortsParams; result: ConnectPortsResult };
   disconnectPorts: { params: DisconnectPortsParams; result: void };
   repairPort: { params: RepairPortParams; result: void };

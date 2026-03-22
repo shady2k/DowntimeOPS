@@ -110,6 +110,12 @@ export function handleRpcRequest(
           deviceId: (params as Record<string, unknown>).deviceId as string,
         });
 
+      case "uninstallDevice":
+        return handleAction(server, id, {
+          type: "UNINSTALL_DEVICE",
+          deviceId: (params as Record<string, unknown>).deviceId as string,
+        });
+
       case "connectPorts":
         return handleAction(server, id, {
           type: "CONNECT_PORTS",

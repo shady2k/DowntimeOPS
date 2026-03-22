@@ -7,11 +7,21 @@ import { AssetRegistry } from "../assets/AssetRegistry";
 import { emitAudioEvent } from "./AudioEvents";
 import { getCableStyle, getCableExitX, drawCablePath, interpolateCablePath, getPulseColor } from "./CablePrefab";
 import { PerfMonitor } from "./PerfMonitor";
+import { buildRackDeviceVisual, getDeviceFaceGeometry } from "./DeviceVisualFactory";
 
 // ── Layout constants ────────────────────────────────────────
 // Game logical resolution: 960×540 (scaled by DPR at runtime)
 const GAME_H = 540;
 const RACK_AREA_W = 576;     // rack occupies left 60% for positioning
+const ZOOM_BTN_W = 54;
+const ZOOM_BTN_H = 16;
+const ZOOM_BTN_X = RACK_AREA_W - ZOOM_BTN_W - 6;
+const ZOOM_BTN_Y = 6;
+const SCROLL_BTN_W = 26;
+const SCROLL_BTN_H = 16;
+const SCROLL_UP_BTN_X = ZOOM_BTN_X - SCROLL_BTN_W - 4;
+const SCROLL_DOWN_BTN_X = SCROLL_UP_BTN_X - SCROLL_BTN_W - 4;
+const SCROLL_BTN_Y = ZOOM_BTN_Y;
 
 // Desired display height for the rack image (px, at logical resolution)
 const RACK_DISPLAY_H = 510;
@@ -132,13 +142,14 @@ export class RackScene extends Phaser.Scene {
   private lastDeviceClickTime = 0;
   private lastDeviceClickId = "";
 
-  // ── Drag from rack (remove device) ─────────────────────
+  // ── Drag from rack (remove/move device) ─────────────────
   private draggingDevice: {
     itemId: string;
     model: string;
     uHeight: number;
     source: "storage" | "carried" | "installed";
     deviceId?: string;
+    sourceSlotU?: number;
     sprite: Phaser.GameObjects.Image;
     offsetX: number;
     offsetY: number;
@@ -146,11 +157,17 @@ export class RackScene extends Phaser.Scene {
   private isDragStarted = false;
   private dragStartPointer = { x: 0, y: 0 };
 
+  // ── Slot-drop preview ────────────────────────────────────
+  private slotHighlightGraphics: Phaser.GameObjects.Graphics | null = null;
+  private externalDragHighlightU: number | null = null;  // set by inventory drag
+
+  // ── Pan guard ────────────────────────────────────────────
+  private blockPan = false;  // set by device/port hitZone, checked by global pointerdown
+
   // ── Drag from inventory (install device) ────────────────
   // ── Animation state ─────────────────────────────────────
   private trafficPulses: TrafficPulse[] = [];
   private failureVfx = new Map<string, FailureVfx>();
-  private portLedTimers = new Map<string, number>();
   private pendingPlacements: Array<{
     deviceId: string;
     targetY: number;
@@ -198,6 +215,9 @@ export class RackScene extends Phaser.Scene {
 
     this.effectGraphics = this.add.graphics().setDepth(DEPTH.EFFECTS);
     this.effectLayer.add(this.effectGraphics);
+
+    this.slotHighlightGraphics = this.add.graphics().setDepth(DEPTH.SLOT_HIGHLIGHTS);
+    this.slotLayer.add(this.slotHighlightGraphics);
 
     // Subscribe to store
     this.unsubscribe = useGameStore.subscribe((store) => {
@@ -385,8 +405,8 @@ export class RackScene extends Phaser.Scene {
       this.mouseWorldX = worldPoint.x;
       this.mouseWorldY = worldPoint.y;
 
-      if (this.isPanning) {
-        // Vertical scroll only in close-up mode
+      if (this.isPanning && !this.draggingDevice) {
+        // Vertical scroll only in close-up mode, not while dragging a device
         const dy = (this.panStart.y - pointer.y) / this.rackCam.zoom;
         const clamped = this.clampScrollToRack(this.rackCam.scrollX, this.camStart.y + dy, this.rackCam.zoom);
         this.rackCam.scrollY = clamped.scrollY;
@@ -396,6 +416,7 @@ export class RackScene extends Phaser.Scene {
     // Left-click: start drag-to-pan in close-up, or double-click to toggle zoom
     this.input.on("pointerdown", (pointer: Phaser.Input.Pointer) => {
       if (!pointer.leftButtonDown()) return;
+      if (this.isPointerOverOverlayButtons(pointer)) return;
 
       // Double-click detection → toggle zoom
       const now = this.time.now;
@@ -403,12 +424,16 @@ export class RackScene extends Phaser.Scene {
         const worldPoint = this.rackCam.getWorldPoint(pointer.x, pointer.y);
         this.toggleZoom(worldPoint.y);
         this.lastBgTapTime = 0;
+        this.blockPan = false;
         return;
       }
       this.lastBgTapTime = now;
 
-      // Start drag-to-pan in close-up mode
-      if (this.isCloseUp()) {
+      // Start drag-to-pan only if not clicking on a device/port and not in cabling mode
+      const wasPanBlocked = this.blockPan;
+      this.blockPan = false;
+      const store = useGameStore.getState();
+      if (this.isCloseUp() && !wasPanBlocked && !store.cablingFrom) {
         this.isPanning = true;
         this.panStart.x = pointer.x;
         this.panStart.y = pointer.y;
@@ -428,10 +453,10 @@ export class RackScene extends Phaser.Scene {
     this.input.on("wheel", (
       _pointer: Phaser.Input.Pointer,
       _gameObjects: unknown[],
-      _dx: number, _dy: number, dz: number,
+      _dx: number, dy: number, _dz: number,
     ) => {
       if (!this.isCloseUp()) return;
-      const nextScrollY = this.rackCam.scrollY + dz * 0.5 / (this.rackCam.zoom / this.dpr);
+      const nextScrollY = this.rackCam.scrollY + dy * 0.5 / (this.rackCam.zoom / this.dpr);
       const clamped = this.clampScrollToRack(this.rackCam.scrollX, nextScrollY, this.rackCam.zoom);
       this.rackCam.scrollY = clamped.scrollY;
     });
@@ -465,6 +490,19 @@ export class RackScene extends Phaser.Scene {
     });
 
     this.game.canvas.addEventListener("contextmenu", (e) => e.preventDefault());
+  }
+
+  private isPointerOverOverlayButtons(pointer: Phaser.Input.Pointer): boolean {
+    const px = pointer.x / this.dpr;
+    const py = pointer.y / this.dpr;
+    const inRect = (x: number, y: number, w: number, h: number) =>
+      px >= x && px <= x + w && py >= y && py <= y + h;
+
+    return (
+      inRect(ZOOM_BTN_X, ZOOM_BTN_Y, ZOOM_BTN_W, ZOOM_BTN_H) ||
+      inRect(SCROLL_UP_BTN_X, SCROLL_BTN_Y, SCROLL_BTN_W, SCROLL_BTN_H) ||
+      inRect(SCROLL_DOWN_BTN_X, SCROLL_BTN_Y, SCROLL_BTN_W, SCROLL_BTN_H)
+    );
   }
 
   // ── Zoom helpers ──────────────────────────────────────────
@@ -539,6 +577,88 @@ export class RackScene extends Phaser.Scene {
     return this.rackCam.zoom > this.getOverviewZoom() * 1.1;
   }
 
+  public getUHeight(): number {
+    return this.rl.uHeight;
+  }
+
+  /** Returns one "page" height in world units at close-up zoom. */
+  public getPageScrollDelta(): number {
+    const zoom = this.isCloseUp() ? this.rackCam.zoom : this.getCloseUpZoom();
+    return (this.rackCam.height / zoom) * 0.85;
+  }
+
+  /** Called by inventory drag (RackUIScene) to show slot preview highlight. */
+  public showDragSlotPreview(screenX: number, screenY: number): void {
+    const worldPoint = this.rackCam.getWorldPoint(screenX, screenY);
+    const targetU = this.getSlotAtPosition(worldPoint.y);
+    if (targetU && this.isSlotFree(targetU)) {
+      this.externalDragHighlightU = targetU;
+    } else {
+      this.externalDragHighlightU = null;
+    }
+  }
+
+  public clearDragSlotPreview(): void {
+    this.externalDragHighlightU = null;
+    this.slotHighlightGraphics?.clear();
+  }
+
+  public scrollBy(deltaWorldY: number) {
+    if (!this.rackCam) return;
+    // Auto-zoom in if in overview — page scroll implies the user wants close-up
+    if (!this.isCloseUp()) {
+      this.toggleZoom();
+      // After zoom tween starts, queue the scroll via a delayed call
+      this.time.delayedCall(350, () => this.scrollBy(deltaWorldY));
+      return;
+    }
+    const clamped = this.clampScrollToRack(
+      this.rackCam.scrollX,
+      this.rackCam.scrollY + deltaWorldY,
+      this.rackCam.zoom,
+    );
+    const tweenState = { scrollY: this.rackCam.scrollY };
+    this.zoomTween?.stop();
+    this.zoomTween = this.tweens.add({
+      targets: tweenState,
+      scrollY: clamped.scrollY,
+      duration: 180,
+      ease: "Quad.easeOut",
+      onUpdate: () => {
+        this.rackCam.scrollY = tweenState.scrollY;
+      },
+      onComplete: () => {
+        this.rackCam.scrollY = clamped.scrollY;
+      },
+    });
+  }
+
+  public pageScroll(direction: -1 | 1) {
+    if (!this.rackCam) return;
+
+    if (!this.isCloseUp()) {
+      const zoom = this.getCloseUpZoom();
+      const { scrollX, scrollY } = this.getCloseUpCameraState();
+      this.rackCam.setZoom(zoom);
+      this.rackCam.setScroll(scrollX, scrollY);
+      this.events.emit("zoomChanged");
+    }
+
+    const currentTop = this.rackCam.worldView.y;
+    const viewportHeight = this.rackCam.worldView.height;
+    const marginY = 12;
+    const minY = this.rl.y - marginY;
+    const maxY = this.rl.y + this.rl.imgH + marginY - viewportHeight;
+    const targetTop = Phaser.Math.Clamp(
+      currentTop + viewportHeight * 0.85 * direction,
+      minY,
+      maxY,
+    );
+    this.zoomTween?.stop();
+    this.isPanning = false;
+    this.rackCam.centerOn(this.rackCam.worldView.centerX, targetTop + viewportHeight / 2);
+  }
+
   /** Toggle between overview and close-up. When zooming in, snap to the clicked U-slot. */
   public toggleZoom(worldY?: number) {
     if (this.isCloseUp()) {
@@ -568,13 +688,13 @@ export class RackScene extends Phaser.Scene {
   ) {
     this.zoomTween?.stop();
     this.isPanning = false;
+    const clamped = this.clampScrollToRack(scrollX, scrollY, zoom);
     const startZoom = this.rackCam.zoom;
     const startCenter = this.getCameraCenterFromScroll(
       this.rackCam.scrollX,
       this.rackCam.scrollY,
       this.rackCam.zoom,
     );
-    const clamped = this.clampScrollToRack(scrollX, scrollY, zoom);
     const targetCenter = this.getCameraCenterFromScroll(clamped.scrollX, clamped.scrollY, zoom);
     const tweenState = { t: 0 };
 
@@ -598,6 +718,7 @@ export class RackScene extends Phaser.Scene {
       },
       onComplete: () => {
         this.rackCam.setZoom(zoom);
+        const targetCenter = this.getCameraCenterFromScroll(clamped.scrollX, clamped.scrollY, zoom);
         this.rackCam.centerOn(targetCenter.centerX, targetCenter.centerY);
         this.events.emit("zoomChanged");
       },
@@ -851,8 +972,42 @@ export class RackScene extends Phaser.Scene {
   }
 
   private updateRackDragPreview() {
-    if (!this.draggingDevice) return;
+    this.slotHighlightGraphics?.clear();
+
+    if (!this.draggingDevice) {
+      // Draw external (inventory) drag preview if active
+      if (this.externalDragHighlightU !== null) {
+        this.drawSlotHighlight(this.externalDragHighlightU);
+      }
+      return;
+    }
+
     this.draggingDevice.sprite.setPosition(this.mouseWorldX, this.mouseWorldY);
+
+    if (this.isMouseOverRack()) {
+      const targetU = this.getSlotAtPosition(this.mouseWorldY);
+      if (targetU) {
+        const isFree = this.isSlotFreeExcluding(targetU, this.draggingDevice.deviceId);
+        if (isFree) {
+          this.drawSlotHighlight(targetU, true);
+        } else if (targetU !== this.draggingDevice.sourceSlotU) {
+          this.drawSlotHighlight(targetU, false);
+        }
+      }
+    }
+  }
+
+  private drawSlotHighlight(u: number, valid = true) {
+    if (!this.slotHighlightGraphics) return;
+    const x = this.deviceX();
+    const y = this.slotY(u);
+    const w = this.rl.bayWidth - 4;
+    const h = this.rl.uHeight - 2;
+    const color = valid ? 0x44ff99 : 0xff4444;
+    this.slotHighlightGraphics.fillStyle(color, 0.18);
+    this.slotHighlightGraphics.fillRect(x, y, w, h);
+    this.slotHighlightGraphics.lineStyle(1, color, 0.7);
+    this.slotHighlightGraphics.strokeRect(x, y, w, h);
   }
 
   // ── Animated rendering (per frame) ────────────────────────
@@ -860,7 +1015,6 @@ export class RackScene extends Phaser.Scene {
   private renderAnimatedEffects() {
     this.renderTrafficPulses();
     this.renderFailureEffects();
-    this.renderPortLedBlinks();
   }
 
   private renderTrafficPulses() {
@@ -952,20 +1106,6 @@ export class RackScene extends Phaser.Scene {
     }
   }
 
-  private renderPortLedBlinks() {
-    const state = useGameStore.getState().state;
-    if (!state) return;
-
-    for (const device of Object.values(this.getRackDevices(state))) {
-      for (const port of device.ports) {
-        if (!port.linkId) continue;
-        const key = port.id;
-        const phase = (this.portLedTimers.get(key) ?? Math.random() * 6.28) + 0.05;
-        this.portLedTimers.set(key, phase);
-      }
-    }
-  }
-
   // ── Device rendering ──────────────────────────────────────
 
   private renderDevices(
@@ -1047,49 +1187,20 @@ export class RackScene extends Phaser.Scene {
     // Progressive detail based on zoom
     const showPorts = this.isCloseUp();
 
-    const deviceDesc = AssetRegistry.getDevice(device.model);
-    const textureKey = deviceDesc?.textureKey ?? `device-${device.type}`;
-
-    // Show the device texture (PNG, SVG, or Graphics fallback — all registered
-    // under the same key by generateTextures). Stretch to fill the U slot.
-    let sprite: Phaser.GameObjects.Image | undefined;
-    if (this.textures.exists(textureKey)) {
-      sprite = this.add.image(0, 0, textureKey)
-        .setOrigin(0, 0)
-        .setDisplaySize(w, h);
-      container.add(sprite);
-    } else {
-      // No texture at all — simple colored fallback
-      const body = this.add.graphics();
-      body.fillStyle(PALETTE.switch, 0.85);
-      body.fillRoundedRect(0, 0, w, h, 2);
-      container.add(body);
-    }
+    const builtVisual = buildRackDeviceVisual(this, device, state, w, h);
+    container.add(builtVisual.container);
+    const sprite = builtVisual.sprite;
 
     // Selection / highlight borders always drawn on top
-    if (selected || highlighted) {
+    if (highlighted) {
       const border = this.add.graphics();
-      if (selected) {
-        border.lineStyle(1.5, PALETTE.deviceSelected, 0.8);
-        border.strokeRoundedRect(0, 0, w, h, 2);
-      }
-      if (highlighted) {
-        border.lineStyle(1.5, PALETTE.highlight, 0.6);
-        border.strokeRoundedRect(-1, -1, w + 2, h + 2, 2);
-      }
+      border.lineStyle(1.5, PALETTE.highlight, 0.6);
+      border.strokeRoundedRect(-1, -1, w + 2, h + 2, 2);
       container.add(border);
     }
 
-    // Status LED — drawn on top of the device texture.
-    // Position from descriptor, fallback to right edge.
-    const statusLedX = deviceDesc ? Math.round(deviceDesc.statusLed.x * w) : w - 10;
-    const statusLed = this.add.graphics();
-    this.drawStatusLed(statusLed, device, statusLedX, h / 2);
-    container.add(statusLed);
-
-    // Ports at zoom > 2.1
-    if (showPorts) {
-      this.createPorts(container, device, h, state, store);
+    if (showPorts || device.ports.length > 0) {
+      this.createPortHitZones(container, device, h, state, store);
     }
 
     // Hit zone
@@ -1103,6 +1214,9 @@ export class RackScene extends Phaser.Scene {
       if (!pointer.leftButtonDown()) return;
       const now = this.time.now;
       const store = useGameStore.getState();
+
+      // Block background pan — device click should not start panning
+      this.blockPan = true;
 
       // Double-click → toggle zoom centered on device
       if (
@@ -1154,33 +1268,6 @@ export class RackScene extends Phaser.Scene {
     // Ensure UI cam doesn't see rack objects
 
     return { container, sprite, hitZone };
-  }
-
-  private drawStatusLed(
-    g: Phaser.GameObjects.Graphics,
-    device: Device,
-    x: number,
-    y: number,
-  ) {
-    const color =
-      device.status === "online"
-        ? PALETTE.portUp
-        : device.status === "failed"
-          ? PALETTE.portDown
-          : device.status === "degraded"
-            ? PALETTE.portErr
-            : PALETTE.portOff;
-
-    if (device.status === "online") {
-      const glowPulse = 0.12 + Math.sin(this.time.now * 0.002) * 0.04;
-      g.fillStyle(color, glowPulse);
-      g.fillCircle(x, y, 2.5);
-    }
-
-    g.fillStyle(color, 1);
-    g.fillCircle(x, y, 1.5);
-    g.fillStyle(0xffffff, 0.3);
-    g.fillCircle(x - 0.4, y - 0.4, 0.6);
   }
 
   // ── Tooltip ───────────────────────────────────────────────
@@ -1242,68 +1329,26 @@ export class RackScene extends Phaser.Scene {
 
   // ── Port rendering + interaction ──────────────────────────
 
-  private createPorts(
+  private createPortHitZones(
     container: Phaser.GameObjects.Container,
     device: Device,
     h: number,
     state: GameState,
     store: ReturnType<typeof useGameStore.getState>,
   ) {
-    // Port layout from descriptor, fallback to sensible defaults
-    const deviceDesc = AssetRegistry.getDevice(device.model);
     const devW = this.rl.bayWidth - 4;
-    const portStartX = Math.round((deviceDesc?.portLayout.startX ?? 0.174) * devW);
-    const maxVisible = Math.min(device.ports.length, deviceDesc?.portLayout.maxVisible ?? 24);
-    const portSpacing = Math.min(PORT.SPACING, (devW - portStartX - 4) / Math.max(maxVisible, 1));
-    const portRadius = Math.min(2, portSpacing * 0.28);
+    const geometry = getDeviceFaceGeometry(device);
+    const maxVisible = Math.min(device.ports.length, geometry.ports.length);
     const portHitRadius = 8;
     const cablingFrom = store.cablingFrom;
     const isCabling = !!cablingFrom;
     const isSourceDevice = cablingFrom?.deviceId === device.id;
 
-    // Y for the LED row (from descriptor) vs Y for hit zones (port body center)
-    const portBodyY = (deviceDesc?.portLayout.startY ?? 0.5) * h;
-    const portLedY  = (deviceDesc?.portLayout.ledY  ?? deviceDesc?.portLayout.startY ?? 0.5) * h;
-
     for (let i = 0; i < maxVisible; i++) {
       const port = device.ports[i];
-      const px = portStartX + i * portSpacing;
-
-      // ── LED dot — tiny indicator driven entirely by port state ──
-      const ledColor =
-        port.status === "up"   ? PALETTE.portUp   :
-        port.status === "down" ? PALETTE.portDown  :
-        port.status === "err_disabled" ? PALETTE.portErr   :
-                                 PALETTE.portOff;
-      const ledAlpha = port.status === "up" ? 1 : 0.35;
-
-      const ledG = this.add.graphics();
-
-      // Subtle glow for active linked ports
-      if (port.linkId && port.status === "up") {
-        const link = state.links[port.linkId];
-        const phase = this.portLedTimers.get(port.id) ?? 0;
-        const blinkAlpha = link?.currentLoadMbps > 0
-          ? 0.15 + Math.sin(phase) * 0.1
-          : 0.08;
-        ledG.fillStyle(ledColor, blinkAlpha);
-        ledG.fillCircle(px, portLedY, portRadius * 2);
-      }
-
-      ledG.fillStyle(ledColor, ledAlpha);
-      ledG.fillCircle(px, portLedY, portRadius);
-      // Tiny specular highlight
-      ledG.fillStyle(0xffffff, 0.25);
-      ledG.fillCircle(px - portRadius * 0.3, portLedY - portRadius * 0.3, portRadius * 0.35);
-      container.add(ledG);
-
-      // ── Connection ring — shows a cable is plugged in ──
-      if (port.linkId) {
-        const ringG = this.add.graphics();
-        ringG.lineStyle(0.8, PALETTE.portUp, 0.5);
-        ringG.strokeCircle(px, portBodyY, portRadius + 1.5);
-        container.add(ringG);
-      }
+      const portGeom = geometry.ports[i];
+      const px = portGeom.x * devW;
+      const portBodyY = portGeom.y * h;
 
       // ── Cabling mode highlights ──
       if (isCabling) {
@@ -1313,12 +1358,12 @@ export class RackScene extends Phaser.Scene {
         if (isSource) {
           const g = this.add.graphics();
           g.lineStyle(1.5, PALETTE.highlight, 1);
-          g.strokeCircle(px, portBodyY, portRadius + 2.5);
+          g.strokeCircle(px, portBodyY, 4.5);
           container.add(g);
         } else if (isValidTarget) {
           const g = this.add.graphics();
           g.lineStyle(1, PALETTE.portUp, 0.7);
-          g.strokeCircle(px, portBodyY, portRadius + 2);
+          g.strokeCircle(px, portBodyY, 4);
           container.add(g);
         }
       }
@@ -1334,6 +1379,7 @@ export class RackScene extends Phaser.Scene {
 
       portZone.on("pointerdown", (pointer: Phaser.Input.Pointer) => {
         if (!pointer.leftButtonDown()) return;
+        this.blockPan = true;
         this.handlePortClick(device, port, i, state);
       });
 
@@ -1345,22 +1391,6 @@ export class RackScene extends Phaser.Scene {
         worldX,
         worldY,
       });
-    }
-
-    if (device.ports.length > 24) {
-      const overflowLabel = this.add
-        .text(
-          portStartX + 24 * portSpacing + 4,
-          h / 2,
-          `+${device.ports.length - 24}`,
-          {
-            fontSize: "6px",
-            color: TEXT_COLORS.dim,
-            fontFamily: "'JetBrains Mono', monospace",
-          },
-        )
-        .setOrigin(0, 0.5);
-      container.add(overflowLabel);
     }
   }
 
@@ -1401,19 +1431,6 @@ export class RackScene extends Phaser.Scene {
       rpcClient
         .call("repairPort", { deviceId: device.id, portIndex })
         .catch(() => {});
-    }
-  }
-
-  private getPortTextureKey(port: Port): string {
-    switch (port.status) {
-      case "up":
-        return "port-up";
-      case "down":
-        return "port-down";
-      case "err_disabled":
-        return "port-err";
-      default:
-        return "port-off";
     }
   }
 
@@ -1507,11 +1524,16 @@ export class RackScene extends Phaser.Scene {
     portIndex: number,
   ): { x: number; y: number } | null {
     if (portIndex >= device.ports.length) return null;
-    const portSpacing = Math.min(PORT.SPACING, (this.rl.bayWidth - 60) / Math.min(device.ports.length, 24));
-    const x = this.deviceX() + 30 + portIndex * portSpacing;
+    const geometry = getDeviceFaceGeometry(device);
+    const portGeom = geometry.ports[portIndex];
+    if (!portGeom) return null;
+
+    const w = this.rl.bayWidth - 4;
     const h = device.uHeight * this.rl.uHeight - 2;
-    const y = this.slotY(device.slotU) + 1 + h / 2;
-    return { x, y };
+    return {
+      x: this.deviceX() + portGeom.x * w,
+      y: this.slotY(device.slotU) + 1 + portGeom.y * h,
+    };
   }
 
   // ── Drag-to-remove (from rack) ────────────────────────────
@@ -1521,6 +1543,8 @@ export class RackScene extends Phaser.Scene {
     const textureKey = `device-${device.type}`;
     const w = this.rl.bayWidth - 4;
     const h = device.uHeight * this.rl.uHeight - 2;
+    const itemId = this.getInstalledItemIdForDevice(device);
+    if (!itemId) return;
 
     const worldPoint = this.rackCam.getWorldPoint(pointer.x, pointer.y);
     const sprite = this.add
@@ -1532,10 +1556,29 @@ export class RackScene extends Phaser.Scene {
 
 
     this.draggingDevice = {
-      itemId: "", model: device.model, uHeight: device.uHeight,
-      source: "installed", deviceId: device.id,
+      itemId, model: device.model, uHeight: device.uHeight,
+      source: "installed", deviceId: device.id, sourceSlotU: device.slotU,
       sprite, offsetX: 0, offsetY: 0,
     };
+  }
+
+  private getInstalledItemIdForDevice(device: Device): string | null {
+    const state = useGameStore.getState().state;
+    if (!state) return null;
+
+    for (const [itemId, item] of Object.entries(state.world.items)) {
+      if (
+        item.kind === "device" &&
+        item.state === "installed" &&
+        item.model === device.model &&
+        item.installedInRackId === device.rackId &&
+        item.installedAtSlotU === device.slotU
+      ) {
+        return itemId;
+      }
+    }
+
+    return null;
   }
 
   public getSlotAtPosition(worldY: number): number | null {
@@ -1546,10 +1589,15 @@ export class RackScene extends Phaser.Scene {
   }
 
   public isSlotFree(u: number): boolean {
+    return this.isSlotFreeExcluding(u, undefined);
+  }
+
+  private isSlotFreeExcluding(u: number, excludeDeviceId: string | undefined): boolean {
     const state = useGameStore.getState().state;
     if (!state) return false;
     const rackDevices = this.getRackDevices(state);
     for (const device of Object.values(rackDevices)) {
+      if (device.id === excludeDeviceId) continue;
       if (u >= device.slotU && u < device.slotU + device.uHeight) return false;
     }
     return true;
@@ -1565,16 +1613,32 @@ export class RackScene extends Phaser.Scene {
   private handleDragDrop() {
     if (!this.draggingDevice) return;
 
-    const { source, deviceId } = this.draggingDevice;
+    const { source, deviceId, itemId, sourceSlotU } = this.draggingDevice;
 
     if (source === "installed" && deviceId) {
-      if (!this.isMouseOverRack()) {
-        rpcClient.call("removeDevice", { deviceId }).catch(() => {});
+      if (this.isMouseOverRack()) {
+        const targetU = this.getSlotAtPosition(this.mouseWorldY);
+        const isFree = targetU ? this.isSlotFreeExcluding(targetU, deviceId) : false;
+        if (targetU && isFree && targetU !== sourceSlotU) {
+          // Move to new slot: uninstall then re-install from storage
+          const store = useGameStore.getState();
+          const rackItemId = store.openRackItemId;
+          if (rackItemId) {
+            rpcClient.call("uninstallDevice", { deviceId })
+              .then(() => rpcClient.call("installDeviceFromStorage", { itemId, rackItemId, slotU: targetU }))
+              .catch(() => {});
+          }
+        }
+        // else: dropped back in same slot — do nothing
+      } else {
+        // Dragged outside rack → uninstall to storage
+        rpcClient.call("uninstallDevice", { deviceId }).catch(() => {});
       }
     }
 
     this.draggingDevice.sprite.destroy();
     this.draggingDevice = null;
+    this.slotHighlightGraphics?.clear();
     this.lastStateKey = "";
   }
 

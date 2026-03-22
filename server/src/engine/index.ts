@@ -47,6 +47,7 @@ function genId(prefix: string): string {
 export type Action =
   | { type: "PLACE_DEVICE"; rackId: string; slotU: number; model: string }
   | { type: "REMOVE_DEVICE"; deviceId: string }
+  | { type: "UNINSTALL_DEVICE"; deviceId: string }
   | {
       type: "CONNECT_PORTS";
       deviceIdA: string;
@@ -154,6 +155,8 @@ export function applyAction(state: GameState, action: Action): EngineResult {
       return placeDevice(state, action.rackId, action.slotU, action.model);
     case "REMOVE_DEVICE":
       return removeDevice(state, action.deviceId);
+    case "UNINSTALL_DEVICE":
+      return uninstallDevice(state, action.deviceId);
     case "CONNECT_PORTS":
       return connectPorts(
         state,
@@ -441,6 +444,85 @@ function removeDevice(state: GameState, deviceId: string): EngineResult {
           id: genId("log"),
           tick: state.tick,
           message: `Removed ${device.name}`,
+          category: "system",
+        },
+      ],
+    },
+  };
+}
+
+function uninstallDevice(state: GameState, deviceId: string): EngineResult {
+  const device = state.devices[deviceId];
+  if (!device) return { state, error: "Device not found" };
+
+  const worldItemEntry = Object.entries(state.world.items).find(([, item]) =>
+    item.kind === "device" &&
+    item.state === "installed" &&
+    item.model === device.model &&
+    item.installedInRackId === device.rackId &&
+    item.installedAtSlotU === device.slotU,
+  );
+  if (!worldItemEntry) {
+    return { state, error: "Installed world item not found" };
+  }
+
+  const [itemId, worldItem] = worldItemEntry;
+  const removedResult = removeDevice(state, deviceId);
+  if (removedResult.error) return removedResult;
+
+  const nextState = removedResult.state;
+  const storageRoom = nextState.world.rooms.storage;
+  const updatedZones = storageRoom ? { ...storageRoom.placementZones } : {};
+
+  let shelfAssigned = false;
+  for (const [zoneId, zone] of Object.entries(updatedZones)) {
+    if (zone.kind === "storage_shelf" && !zone.occupiedByItemId) {
+      updatedZones[zoneId] = { ...zone, occupiedByItemId: itemId };
+      shelfAssigned = true;
+      break;
+    }
+  }
+
+  return {
+    state: {
+      ...nextState,
+      world: {
+        ...nextState.world,
+        items: {
+          ...nextState.world.items,
+          [itemId]: {
+            ...worldItem,
+            state: "in_storage",
+            roomId: "storage",
+            position: null,
+            installedInRackId: null,
+            installedAtSlotU: null,
+          },
+        },
+        storage: {
+          packages: {
+            ...nextState.world.storage.packages,
+            [itemId]: { itemId, purchasedAt: nextState.tick },
+          },
+        },
+        rooms: storageRoom
+          ? {
+              ...nextState.world.rooms,
+              storage: {
+                ...storageRoom,
+                placementZones: updatedZones,
+              },
+            }
+          : nextState.world.rooms,
+      },
+      log: [
+        ...nextState.log,
+        {
+          id: genId("log"),
+          tick: nextState.tick,
+          message: shelfAssigned
+            ? `Returned ${device.name} to storage`
+            : `Returned ${device.name} to storage queue`,
           category: "system",
         },
       ],
