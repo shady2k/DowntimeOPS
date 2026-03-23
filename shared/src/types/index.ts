@@ -24,6 +24,7 @@ export type { Rack } from "./Rack";
 export type { Client, Contract } from "./Client";
 export type { Vlan } from "./Vlan";
 export type { Subnet } from "./Subnet";
+export type { IpamAllocation, IpamSubnet, IpamState } from "./Ipam";
 export type { Route } from "./Route";
 export type { FirewallRule } from "./FirewallRule";
 export type { Alert, LogEntry, Uplink, SaveInfo } from "./Common";

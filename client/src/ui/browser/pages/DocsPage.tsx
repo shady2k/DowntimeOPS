@@ -10,6 +10,9 @@ export function DocsPage({ article }: DocsPageProps) {
 
   if (article === "quickstart") return <QuickStartArticle />;
   if (article === "subnets") return <SubnetsArticle />;
+  if (article === "vlans") return <VlanGuideArticle />;
+  if (article === "ipam") return <IpamGuideArticle />;
+  if (article === "server-setup") return <ServerSetupArticle />;
 
   // Index page
   return (
@@ -28,6 +31,21 @@ export function DocsPage({ article }: DocsPageProps) {
           title="Subnet Reference"
           description="IP addressing, CIDR notation, common subnet sizes."
           onClick={() => navigate({ type: "docs", article: "subnets" })}
+        />
+        <DocLink
+          title="VLAN Guide"
+          description="Virtual LANs, trunk vs access ports, assigning ports to VLANs."
+          onClick={() => navigate({ type: "docs", article: "vlans" })}
+        />
+        <DocLink
+          title="IPAM Guide"
+          description="Plan your IP space with the IP Address Manager tool."
+          onClick={() => navigate({ type: "docs", article: "ipam" })}
+        />
+        <DocLink
+          title="Server Setup"
+          description="Configure server networking, gateways, and services."
+          onClick={() => navigate({ type: "docs", article: "server-setup" })}
         />
       </div>
     </div>
@@ -132,6 +150,122 @@ function SubnetsArticle() {
           <Code>172.16.0.0/12</Code> — 172.16.0.0 to 172.31.255.255<br />
           <Code>192.168.0.0/16</Code> — 192.168.0.0 to 192.168.255.255<br />
         </div>
+      </Section>
+    </div>
+  );
+}
+
+function VlanGuideArticle() {
+  return (
+    <div style={{ padding: 20, fontFamily: THEME.fonts.body, fontSize: 11, color: THEME.colors.text, lineHeight: 1.6 }}>
+      <h2 style={{ fontSize: 16, fontWeight: 700, color: THEME.colors.accent, marginBottom: 12, fontFamily: THEME.fonts.heading }}>
+        VLAN Guide
+      </h2>
+
+      <Section title="What Are VLANs?">
+        A <strong>VLAN</strong> (Virtual LAN) divides a physical switch into separate logical networks.
+        Devices on different VLANs cannot communicate directly — they need a router to bridge traffic between them.
+        <br /><br />
+        This is how you isolate client traffic, keep management networks private, and organize your datacenter.
+      </Section>
+
+      <Section title="Creating VLANs">
+        Open a switch&apos;s console port and go to the <strong>VLANs</strong> tab.
+        Enter a VLAN ID (2–4094) and a name, then click Add.
+        <br /><br />
+        <Code>VLAN 1</Code> is the default VLAN — all ports start here. It cannot be deleted.
+      </Section>
+
+      <Section title="Access vs Trunk Ports">
+        <ul style={{ margin: "4px 0 4px 16px", padding: 0 }}>
+          <li><strong>Access port</strong> — belongs to one VLAN. Use for end devices (servers, workstations).</li>
+          <li><strong>Trunk port</strong> — carries traffic for multiple VLANs. Use between switches or between a switch and a router.</li>
+        </ul>
+      </Section>
+
+      <Section title="Assigning Ports">
+        In the switch&apos;s <strong>Ports</strong> tab, select a port and change its mode to Access or Trunk.
+        For access ports, pick the VLAN. For trunk ports, select which VLANs are allowed.
+      </Section>
+    </div>
+  );
+}
+
+function IpamGuideArticle() {
+  return (
+    <div style={{ padding: 20, fontFamily: THEME.fonts.body, fontSize: 11, color: THEME.colors.text, lineHeight: 1.6 }}>
+      <h2 style={{ fontSize: 16, fontWeight: 700, color: THEME.colors.accent, marginBottom: 12, fontFamily: THEME.fonts.heading }}>
+        IPAM Guide
+      </h2>
+
+      <Section title="What Is IPAM?">
+        The <strong>IP Address Manager</strong> is a planning tool. Use it to design your IP address scheme
+        before configuring devices. It tracks which IPs are allocated and to which devices.
+        <br /><br />
+        IPAM does <em>not</em> auto-configure devices — you still set IPs manually on each device&apos;s management page.
+      </Section>
+
+      <Section title="Creating Subnets">
+        Click the <strong>IPAM</strong> bookmark to open the tool. Enter a network address, prefix length, and name.
+        <br /><br />
+        Example: <Code>10.0.1.0/24</Code> named &quot;Servers&quot; gives you 254 usable host addresses.
+        <br /><br />
+        You can optionally link a subnet to a VLAN for organization.
+      </Section>
+
+      <Section title="Allocating IPs">
+        Click a subnet to see its detail view. Use the Allocate form to reserve IPs.
+        You can link an allocation to a specific device and add a description.
+        <br /><br />
+        The usage bar shows how much of the subnet is allocated.
+      </Section>
+
+      <Section title="Recommended Workflow">
+        <ol style={{ margin: "4px 0 4px 16px", padding: 0 }}>
+          <li>Plan subnets in IPAM (e.g., 10.0.1.0/24 for servers, 10.0.2.0/24 for management)</li>
+          <li>Allocate IPs to devices in IPAM</li>
+          <li>Configure each device&apos;s interface with the planned IP</li>
+          <li>Add routes on your router for each subnet</li>
+        </ol>
+      </Section>
+    </div>
+  );
+}
+
+function ServerSetupArticle() {
+  return (
+    <div style={{ padding: 20, fontFamily: THEME.fonts.body, fontSize: 11, color: THEME.colors.text, lineHeight: 1.6 }}>
+      <h2 style={{ fontSize: 16, fontWeight: 700, color: THEME.colors.accent, marginBottom: 12, fontFamily: THEME.fonts.heading }}>
+        Server Setup
+      </h2>
+
+      <Section title="Network Configuration">
+        Open a server&apos;s console port to access its management page. In the <strong>Network</strong> tab, set:
+        <ul style={{ margin: "4px 0 4px 16px", padding: 0 }}>
+          <li><strong>IP Address</strong> — the server&apos;s address on the network (e.g., <Code>10.0.1.10</Code>)</li>
+          <li><strong>Subnet Mask</strong> — must match the subnet (e.g., <Code>/24</Code>)</li>
+          <li><strong>Gateway</strong> — the router IP for this subnet (e.g., <Code>10.0.1.1</Code>)</li>
+        </ul>
+      </Section>
+
+      <Section title="Connecting to a Switch">
+        Cable the server to a switch port. Make sure the switch port is on the correct VLAN (if using VLANs)
+        and the server&apos;s IP is in the same subnet as the router interface for that VLAN.
+      </Section>
+
+      <Section title="Services">
+        In the <strong>Services</strong> tab, toggle services on or off. Services define what traffic
+        the server handles (HTTP, database, application). Clients require specific services to be running.
+      </Section>
+
+      <Section title="Checklist">
+        <ol style={{ margin: "4px 0 4px 16px", padding: 0 }}>
+          <li>Cable server to switch</li>
+          <li>Set IP, mask, and gateway on server</li>
+          <li>Ensure switch port is on the right VLAN</li>
+          <li>Ensure router has an interface on the same subnet</li>
+          <li>Enable required services</li>
+        </ol>
       </Section>
     </div>
   );

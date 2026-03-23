@@ -13,6 +13,13 @@ import type {
   Route,
 } from "@downtime-ops/shared";
 import type { ResolveBrowserTargetResult } from "@downtime-ops/shared";
+import {
+  isValidIp,
+  isIpInSubnet,
+  isNetworkAddress,
+  isBroadcastAddress,
+  subnetsOverlap,
+} from "@downtime-ops/shared";
 import { BALANCE } from "./config/balance";
 import {
   EQUIPMENT_CATALOG,
@@ -78,6 +85,10 @@ export type Action =
   | { type: "CONFIGURE_SERVER_NETWORK"; deviceId: string; ip: string | null; mask: number | null; gateway: string | null }
   | { type: "TOGGLE_SERVICE"; deviceId: string; serviceIndex: number; enabled: boolean }
   | { type: "CONFIGURE_SWITCH_MANAGEMENT"; deviceId: string; managementIp: string | null; managementMask: number | null }
+  | { type: "CREATE_SUBNET"; network: string; mask: number; name: string; vlanId: number | null }
+  | { type: "DELETE_SUBNET"; subnetId: string }
+  | { type: "ALLOCATE_IP"; subnetId: string; ip: string; deviceId: string | null; description: string }
+  | { type: "RELEASE_IP"; subnetId: string; ip: string }
   | { type: "TICK" }
   | WorldAction;
 
@@ -163,6 +174,8 @@ export function createInitialState(): GameState {
     progression: createInitialMilestones(),
 
     world: createInitialWorld(),
+
+    ipam: { subnets: {} },
   };
 }
 
@@ -215,6 +228,14 @@ export function applyAction(state: GameState, action: Action): EngineResult {
       return toggleService(state, action.deviceId, action.serviceIndex, action.enabled);
     case "CONFIGURE_SWITCH_MANAGEMENT":
       return configureSwitchManagement(state, action.deviceId, action.managementIp, action.managementMask);
+    case "CREATE_SUBNET":
+      return createSubnet(state, action.network, action.mask, action.name, action.vlanId);
+    case "DELETE_SUBNET":
+      return deleteSubnet(state, action.subnetId);
+    case "ALLOCATE_IP":
+      return allocateIp(state, action.subnetId, action.ip, action.deviceId, action.description);
+    case "RELEASE_IP":
+      return releaseIp(state, action.subnetId, action.ip);
     case "TICK":
       return { state: processTick(state) };
 
@@ -489,11 +510,28 @@ function removeDevice(state: GameState, deviceId: string): EngineResult {
     );
   }
 
+  // Clear IPAM allocation references to this device
+  const cleanedIpamSubnets: Record<string, typeof newState.ipam.subnets[string]> = {};
+  for (const [sid, subnet] of Object.entries(newState.ipam.subnets)) {
+    const cleanedAllocations: Record<string, typeof subnet.allocations[string]> = {};
+    let changed = false;
+    for (const [ip, alloc] of Object.entries(subnet.allocations)) {
+      if (alloc.deviceId === deviceId) {
+        cleanedAllocations[ip] = { ...alloc, deviceId: null };
+        changed = true;
+      } else {
+        cleanedAllocations[ip] = alloc;
+      }
+    }
+    cleanedIpamSubnets[sid] = changed ? { ...subnet, allocations: cleanedAllocations } : subnet;
+  }
+
   return {
     state: {
       ...newState,
       devices: remainingDevices,
       uplinks: newUplinks,
+      ipam: { ...newState.ipam, subnets: cleanedIpamSubnets },
       log: [
         ...newState.log,
         {
@@ -887,15 +925,6 @@ function setSpeed(state: GameState, speed: number): EngineResult {
 
 // --- Device configuration handlers ---
 
-function isValidIp(ip: string): boolean {
-  const parts = ip.split(".");
-  if (parts.length !== 4) return false;
-  return parts.every((p) => {
-    const n = Number(p);
-    return Number.isInteger(n) && n >= 0 && n <= 255;
-  });
-}
-
 /** Check if an IP conflicts with any device (excluding excludeDeviceId) */
 function hasIpConflict(state: GameState, ip: string, excludeDeviceId: string): Device | null {
   for (const dev of Object.values(state.devices)) {
@@ -1159,11 +1188,20 @@ function removeVlanAction(state: GameState, vlanId: number): EngineResult {
     }
   }
 
+  // Cascade: clear vlanId on IPAM subnets referencing this VLAN
+  const newIpamSubnets = { ...state.ipam.subnets };
+  for (const [sid, subnet] of Object.entries(newIpamSubnets)) {
+    if (subnet.vlanId === vlanId) {
+      newIpamSubnets[sid] = { ...subnet, vlanId: null };
+    }
+  }
+
   return {
     state: {
       ...state,
       vlans: remainingVlans,
       devices: newDevices,
+      ipam: { ...state.ipam, subnets: newIpamSubnets },
       log: [
         ...state.log,
         {
@@ -1404,4 +1442,152 @@ export function resolveBrowserTarget(
     }
   }
   return { found: false, reason: "no_device" };
+}
+
+// --- IPAM handlers ---
+
+function createSubnet(
+  state: GameState,
+  network: string,
+  mask: number,
+  name: string,
+  vlanId: number | null,
+): EngineResult {
+  if (!isValidIp(network)) return { state, error: "Invalid network address" };
+  if (!Number.isInteger(mask) || mask < 0 || mask > 32) return { state, error: "Mask must be 0–32" };
+  if (!isNetworkAddress(network, mask)) {
+    return { state, error: `${network} is not a valid network address for /${mask}` };
+  }
+  if (!name.trim()) return { state, error: "Subnet name is required" };
+
+  // Check overlap with existing subnets
+  for (const existing of Object.values(state.ipam.subnets)) {
+    if (subnetsOverlap(network, mask, existing.network, existing.mask)) {
+      return { state, error: `Overlaps with existing subnet ${existing.name} (${existing.network}/${existing.mask})` };
+    }
+  }
+
+  // Validate VLAN exists if provided
+  if (vlanId != null && !state.vlans[vlanId]) {
+    return { state, error: `VLAN ${vlanId} not found` };
+  }
+
+  const subnetId = genId("subnet");
+  return {
+    state: {
+      ...state,
+      ipam: {
+        ...state.ipam,
+        subnets: {
+          ...state.ipam.subnets,
+          [subnetId]: {
+            id: subnetId,
+            network,
+            mask,
+            name: name.trim(),
+            vlanId,
+            allocations: {},
+          },
+        },
+      },
+      log: [
+        ...state.log,
+        {
+          id: genId("log"),
+          tick: state.tick,
+          message: `IPAM: Created subnet ${name.trim()} (${network}/${mask})`,
+          category: "network",
+        },
+      ],
+    },
+    subnetId,
+  } as EngineResult & { subnetId: string };
+}
+
+function deleteSubnet(state: GameState, subnetId: string): EngineResult {
+  const subnet = state.ipam.subnets[subnetId];
+  if (!subnet) return { state, error: "Subnet not found" };
+
+  const { [subnetId]: _removed, ...remainingSubnets } = state.ipam.subnets;
+  return {
+    state: {
+      ...state,
+      ipam: { ...state.ipam, subnets: remainingSubnets },
+      log: [
+        ...state.log,
+        {
+          id: genId("log"),
+          tick: state.tick,
+          message: `IPAM: Deleted subnet ${subnet.name} (${subnet.network}/${subnet.mask})`,
+          category: "network",
+        },
+      ],
+    },
+  };
+}
+
+function allocateIp(
+  state: GameState,
+  subnetId: string,
+  ip: string,
+  deviceId: string | null,
+  description: string,
+): EngineResult {
+  const subnet = state.ipam.subnets[subnetId];
+  if (!subnet) return { state, error: "Subnet not found" };
+  if (!isValidIp(ip)) return { state, error: "Invalid IP address" };
+  if (!isIpInSubnet(ip, subnet.network, subnet.mask)) {
+    return { state, error: `${ip} is not within ${subnet.network}/${subnet.mask}` };
+  }
+  if (isBroadcastAddress(ip, subnet.network, subnet.mask)) {
+    return { state, error: `${ip} is the broadcast address` };
+  }
+  if (ip === subnet.network && subnet.mask < 31) {
+    return { state, error: `${ip} is the network address` };
+  }
+  if (subnet.allocations[ip]) {
+    return { state, error: `${ip} is already allocated` };
+  }
+  if (deviceId && !state.devices[deviceId]) {
+    return { state, error: "Device not found" };
+  }
+
+  return {
+    state: {
+      ...state,
+      ipam: {
+        ...state.ipam,
+        subnets: {
+          ...state.ipam.subnets,
+          [subnetId]: {
+            ...subnet,
+            allocations: {
+              ...subnet.allocations,
+              [ip]: { ip, deviceId: deviceId || null, description },
+            },
+          },
+        },
+      },
+    },
+  };
+}
+
+function releaseIp(state: GameState, subnetId: string, ip: string): EngineResult {
+  const subnet = state.ipam.subnets[subnetId];
+  if (!subnet) return { state, error: "Subnet not found" };
+  if (!subnet.allocations[ip]) return { state, error: `No allocation for ${ip}` };
+
+  const { [ip]: _removed, ...remainingAllocations } = subnet.allocations;
+  return {
+    state: {
+      ...state,
+      ipam: {
+        ...state.ipam,
+        subnets: {
+          ...state.ipam.subnets,
+          [subnetId]: { ...subnet, allocations: remainingAllocations },
+        },
+      },
+    },
+  };
 }

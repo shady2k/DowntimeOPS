@@ -346,6 +346,47 @@ export function handleRpcRequest(
         });
       }
 
+      case "createSubnet": {
+        const state = server.getState()!;
+        const p = params as Record<string, unknown>;
+        const result = applyAction(state, {
+          type: "CREATE_SUBNET",
+          network: p.network as string,
+          mask: p.mask as number,
+          name: p.name as string,
+          vlanId: (p.vlanId as number) ?? null,
+        });
+        if (result.error) return rpcError(id, -32000, result.error);
+        server.setState(result.state);
+        return rpcSuccess(id, { subnetId: (result as { subnetId?: string }).subnetId });
+      }
+
+      case "deleteSubnet":
+        return handleAction(server, id, {
+          type: "DELETE_SUBNET",
+          subnetId: (params as Record<string, unknown>).subnetId as string,
+        });
+
+      case "allocateIp": {
+        const p = params as Record<string, unknown>;
+        return handleAction(server, id, {
+          type: "ALLOCATE_IP",
+          subnetId: p.subnetId as string,
+          ip: p.ip as string,
+          deviceId: (p.deviceId as string) ?? null,
+          description: (p.description as string) || "",
+        });
+      }
+
+      case "releaseIp": {
+        const p = params as Record<string, unknown>;
+        return handleAction(server, id, {
+          type: "RELEASE_IP",
+          subnetId: p.subnetId as string,
+          ip: p.ip as string,
+        });
+      }
+
       case "resolveBrowserTarget": {
         const state = server.getState()!;
         const p = params as Record<string, unknown>;

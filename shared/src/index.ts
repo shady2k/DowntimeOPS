@@ -2,3 +2,15 @@ export type * from "./types";
 export { getDeviceIp } from "./types";
 export type * from "./rpc";
 export type * from "./storage";
+export {
+  isValidIp,
+  ipToInt,
+  intToIp,
+  networkAddress,
+  broadcastAddress,
+  hostCount,
+  isIpInSubnet,
+  isNetworkAddress,
+  isBroadcastAddress,
+  subnetsOverlap,
+} from "./utils/ipUtils";

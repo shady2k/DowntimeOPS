@@ -68,6 +68,7 @@ export { ZOOM_STEPS };
 
 const DEFAULT_BOOKMARKS: Bookmark[] = [
   { label: "Shop", route: { type: "shop" } },
+  { label: "IPAM", route: { type: "ipam" } },
   { label: "Docs", route: { type: "docs" } },
 ];
 

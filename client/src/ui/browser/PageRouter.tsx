@@ -10,6 +10,7 @@ import { ServerManagementPage } from "./pages/ServerManagementPage";
 import { ErrorPage } from "./pages/ErrorPage";
 import { ShopPage } from "./pages/ShopPage";
 import { DocsPage } from "./pages/DocsPage";
+import { IpamPage } from "./pages/IpamPage";
 import { THEME } from "../theme";
 
 export function PageRouter() {
@@ -54,11 +55,7 @@ function renderRoute(route: BrowserRoute, state: GameState) {
       return <DocsPage article={route.article} />;
 
     case "ipam":
-      return (
-        <div style={{ padding: 20, color: THEME.colors.textMuted, fontFamily: THEME.fonts.body, fontSize: 12 }}>
-          IPAM tool — coming in Phase 3
-        </div>
-      );
+      return <IpamPage subpage={route.subpage} />;
 
     case "error":
       return <ErrorPage code={route.code} message={route.message} />;

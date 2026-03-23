@@ -10,6 +10,7 @@ import type { Alert, LogEntry, Uplink } from "./Common";
 import type { TutorialState } from "./Objective";
 import type { MilestoneState } from "./Milestone";
 import type { WorldState } from "./World";
+import type { IpamState } from "./Ipam";
 
 export interface GameState {
   tick: number;
@@ -38,4 +39,6 @@ export interface GameState {
   progression: MilestoneState;
 
   world: WorldState;
+
+  ipam: IpamState;
 }

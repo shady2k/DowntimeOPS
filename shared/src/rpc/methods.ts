@@ -206,6 +206,35 @@ export interface ResolveBrowserTargetResult {
   reason: "ok" | "no_device";
 }
 
+// --- Phase 3: IPAM params ---
+
+export interface CreateSubnetParams {
+  network: string;
+  mask: number;
+  name: string;
+  vlanId?: number;
+}
+
+export interface CreateSubnetResult {
+  subnetId: string;
+}
+
+export interface DeleteSubnetParams {
+  subnetId: string;
+}
+
+export interface AllocateIpParams {
+  subnetId: string;
+  ip: string;
+  deviceId?: string;
+  description: string;
+}
+
+export interface ReleaseIpParams {
+  subnetId: string;
+  ip: string;
+}
+
 // --- Result types ---
 
 export interface PlaceDeviceResult {
@@ -285,6 +314,12 @@ export interface RpcMethods {
 
   // Browser target resolution
   resolveBrowserTarget: { params: ResolveBrowserTargetParams; result: ResolveBrowserTargetResult };
+
+  // IPAM
+  createSubnet: { params: CreateSubnetParams; result: CreateSubnetResult };
+  deleteSubnet: { params: DeleteSubnetParams; result: void };
+  allocateIp: { params: AllocateIpParams; result: void };
+  releaseIp: { params: ReleaseIpParams; result: void };
 }
 
 export type RpcMethodName = keyof RpcMethods;
