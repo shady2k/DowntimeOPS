@@ -156,6 +156,56 @@ export interface AddStaticRouteResult {
   routeId: string;
 }
 
+// --- Phase 2: VLAN, switch, server configuration params ---
+
+export interface ConfigureVlanParams {
+  vlanId: number;
+  name: string;
+}
+
+export interface RemoveVlanParams {
+  vlanId: number;
+}
+
+export interface SetPortVlanParams {
+  deviceId: string;
+  portIndex: number;
+  mode: "access" | "trunk";
+  accessVlan?: number;
+  trunkAllowedVlans?: number[];
+}
+
+export interface ConfigureServerNetworkParams {
+  deviceId: string;
+  ip: string | null;
+  mask: number | null;
+  gateway: string | null;
+}
+
+export interface ToggleServiceParams {
+  deviceId: string;
+  serviceIndex: number;
+  enabled: boolean;
+}
+
+export interface ConfigureSwitchManagementParams {
+  deviceId: string;
+  managementIp: string | null;
+  managementMask: number | null;
+}
+
+// --- Phase 2: Browser target resolution ---
+
+export interface ResolveBrowserTargetParams {
+  targetIp: string;
+}
+
+export interface ResolveBrowserTargetResult {
+  found: boolean;
+  targetDeviceId?: string;
+  reason: "ok" | "no_device";
+}
+
 // --- Result types ---
 
 export interface PlaceDeviceResult {
@@ -224,6 +274,17 @@ export interface RpcMethods {
   addStaticRoute: { params: AddStaticRouteParams; result: AddStaticRouteResult };
   removeRoute: { params: RemoveRouteParams; result: void };
   setDeviceHostname: { params: SetDeviceHostnameParams; result: void };
+
+  // Phase 2: VLAN + switch + server configuration
+  configureVlan: { params: ConfigureVlanParams; result: void };
+  removeVlan: { params: RemoveVlanParams; result: void };
+  setPortVlan: { params: SetPortVlanParams; result: void };
+  configureServerNetwork: { params: ConfigureServerNetworkParams; result: void };
+  toggleService: { params: ToggleServiceParams; result: void };
+  configureSwitchManagement: { params: ConfigureSwitchManagementParams; result: void };
+
+  // Browser target resolution
+  resolveBrowserTarget: { params: ResolveBrowserTargetParams; result: ResolveBrowserTargetResult };
 }
 
 export type RpcMethodName = keyof RpcMethods;

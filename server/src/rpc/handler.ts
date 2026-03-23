@@ -10,6 +10,7 @@ import {
   applyAction,
   createTracer,
   advanceTracer,
+  resolveBrowserTarget,
   type Action,
 } from "../engine";
 import { buyCartItems } from "../engine/world/worldActions";
@@ -284,6 +285,73 @@ export function handleRpcRequest(
           deviceId: (params as Record<string, unknown>).deviceId as string,
           hostname: (params as Record<string, unknown>).hostname as string,
         });
+
+      // --- Phase 2: VLAN + switch + server configuration ---
+
+      case "configureVlan": {
+        const p = params as Record<string, unknown>;
+        return handleAction(server, id, {
+          type: "CONFIGURE_VLAN",
+          vlanId: p.vlanId as number,
+          name: p.name as string,
+        });
+      }
+
+      case "removeVlan":
+        return handleAction(server, id, {
+          type: "REMOVE_VLAN",
+          vlanId: (params as Record<string, unknown>).vlanId as number,
+        });
+
+      case "setPortVlan": {
+        const p = params as Record<string, unknown>;
+        return handleAction(server, id, {
+          type: "SET_PORT_VLAN",
+          deviceId: p.deviceId as string,
+          portIndex: p.portIndex as number,
+          mode: p.mode as "access" | "trunk",
+          accessVlan: p.accessVlan as number | undefined,
+          trunkAllowedVlans: p.trunkAllowedVlans as number[] | undefined,
+        });
+      }
+
+      case "configureServerNetwork": {
+        const p = params as Record<string, unknown>;
+        return handleAction(server, id, {
+          type: "CONFIGURE_SERVER_NETWORK",
+          deviceId: p.deviceId as string,
+          ip: (p.ip as string) ?? null,
+          mask: (p.mask as number) ?? null,
+          gateway: (p.gateway as string) ?? null,
+        });
+      }
+
+      case "toggleService": {
+        const p = params as Record<string, unknown>;
+        return handleAction(server, id, {
+          type: "TOGGLE_SERVICE",
+          deviceId: p.deviceId as string,
+          serviceIndex: p.serviceIndex as number,
+          enabled: p.enabled as boolean,
+        });
+      }
+
+      case "configureSwitchManagement": {
+        const p = params as Record<string, unknown>;
+        return handleAction(server, id, {
+          type: "CONFIGURE_SWITCH_MANAGEMENT",
+          deviceId: p.deviceId as string,
+          managementIp: (p.managementIp as string) ?? null,
+          managementMask: (p.managementMask as number) ?? null,
+        });
+      }
+
+      case "resolveBrowserTarget": {
+        const state = server.getState()!;
+        const p = params as Record<string, unknown>;
+        const result = resolveBrowserTarget(state, p.targetIp as string);
+        return rpcSuccess(id, result);
+      }
 
       case "getSnapshot":
         return rpcSuccess(id, { state: server.getState() });

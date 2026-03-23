@@ -12,6 +12,7 @@ import type {
   InterfaceConfig,
   Route,
 } from "@downtime-ops/shared";
+import type { ResolveBrowserTargetResult } from "@downtime-ops/shared";
 import { BALANCE } from "./config/balance";
 import {
   EQUIPMENT_CATALOG,
@@ -71,6 +72,12 @@ export type Action =
   | { type: "ADD_STATIC_ROUTE"; deviceId: string; destination: string; nextHop: string; metric: number }
   | { type: "REMOVE_ROUTE"; routeId: string }
   | { type: "SET_HOSTNAME"; deviceId: string; hostname: string }
+  | { type: "CONFIGURE_VLAN"; vlanId: number; name: string }
+  | { type: "REMOVE_VLAN"; vlanId: number }
+  | { type: "SET_PORT_VLAN"; deviceId: string; portIndex: number; mode: "access" | "trunk"; accessVlan?: number; trunkAllowedVlans?: number[] }
+  | { type: "CONFIGURE_SERVER_NETWORK"; deviceId: string; ip: string | null; mask: number | null; gateway: string | null }
+  | { type: "TOGGLE_SERVICE"; deviceId: string; serviceIndex: number; enabled: boolean }
+  | { type: "CONFIGURE_SWITCH_MANAGEMENT"; deviceId: string; managementIp: string | null; managementMask: number | null }
   | { type: "TICK" }
   | WorldAction;
 
@@ -101,7 +108,9 @@ export function createInitialState(): GameState {
     racks: {},
     devices: {},
     links: {},
-    vlans: {},
+    vlans: {
+      1: { id: 1, name: "default", color: "#666666", subnet: null },
+    },
     routes: [],
     firewallRules: [],
     clients: {
@@ -194,6 +203,18 @@ export function applyAction(state: GameState, action: Action): EngineResult {
       return removeRoute(state, action.routeId);
     case "SET_HOSTNAME":
       return setHostname(state, action.deviceId, action.hostname);
+    case "CONFIGURE_VLAN":
+      return configureVlan(state, action.vlanId, action.name);
+    case "REMOVE_VLAN":
+      return removeVlanAction(state, action.vlanId);
+    case "SET_PORT_VLAN":
+      return setPortVlan(state, action.deviceId, action.portIndex, action.mode, action.accessVlan, action.trunkAllowedVlans);
+    case "CONFIGURE_SERVER_NETWORK":
+      return configureServerNetwork(state, action.deviceId, action.ip, action.mask, action.gateway);
+    case "TOGGLE_SERVICE":
+      return toggleService(state, action.deviceId, action.serviceIndex, action.enabled);
+    case "CONFIGURE_SWITCH_MANAGEMENT":
+      return configureSwitchManagement(state, action.deviceId, action.managementIp, action.managementMask);
     case "TICK":
       return { state: processTick(state) };
 
@@ -875,6 +896,23 @@ function isValidIp(ip: string): boolean {
   });
 }
 
+/** Check if an IP conflicts with any device (excluding excludeDeviceId) */
+function hasIpConflict(state: GameState, ip: string, excludeDeviceId: string): Device | null {
+  for (const dev of Object.values(state.devices)) {
+    if (dev.id === excludeDeviceId) continue;
+    const cfg = dev.config;
+    if ("interfaces" in cfg) {
+      const ifaces = cfg.interfaces as Record<number, InterfaceConfig>;
+      for (const iface of Object.values(ifaces)) {
+        if (iface.ip === ip) return dev;
+      }
+    }
+    if ("ip" in cfg && cfg.ip === ip) return dev;
+    if ("managementIp" in cfg && cfg.managementIp === ip) return dev;
+  }
+  return null;
+}
+
 function configureInterface(
   state: GameState,
   deviceId: string,
@@ -899,18 +937,8 @@ function configureInterface(
     if (mask === null || mask < 0 || mask > 32) return { state, error: `Invalid subnet mask: ${mask}` };
 
     // Check for IP conflicts (another device already has this IP)
-    for (const dev of Object.values(state.devices)) {
-      if (dev.id === deviceId) continue;
-      const cfg = dev.config;
-      if ("interfaces" in cfg) {
-        const ifaces = cfg.interfaces as Record<number, InterfaceConfig>;
-        for (const iface of Object.values(ifaces)) {
-          if (iface.ip === ip) return { state, error: `IP ${ip} is already assigned to ${dev.name}` };
-        }
-      }
-      if ("ip" in cfg && cfg.ip === ip) return { state, error: `IP ${ip} is already assigned to ${dev.name}` };
-      if ("managementIp" in cfg && cfg.managementIp === ip) return { state, error: `IP ${ip} is already assigned to ${dev.name}` };
-    }
+    const conflict = hasIpConflict(state, ip, deviceId);
+    if (conflict) return { state, error: `IP ${ip} is already assigned to ${conflict.name}` };
   }
 
   const routerCfg = device.config as RouterConfig;
@@ -1053,4 +1081,327 @@ function setHostname(
       },
     },
   };
+}
+
+// --- Phase 2: VLAN, switch, server configuration handlers ---
+
+/** Deterministic color from VLAN ID */
+function vlanColor(vlanId: number): string {
+  const hue = (vlanId * 137) % 360;
+  return `hsl(${hue}, 50%, 45%)`;
+}
+
+function configureVlan(
+  state: GameState,
+  vlanId: number,
+  name: string,
+): EngineResult {
+  if (!Number.isInteger(vlanId) || vlanId < 1 || vlanId > 4094) {
+    return { state, error: "VLAN ID must be 1-4094" };
+  }
+  if (!name || name.length > 32) {
+    return { state, error: "VLAN name must be 1-32 characters" };
+  }
+
+  const existing = state.vlans[vlanId];
+  const vlan = existing
+    ? { ...existing, name }
+    : { id: vlanId, name, color: vlanColor(vlanId), subnet: null };
+
+  return {
+    state: {
+      ...state,
+      vlans: { ...state.vlans, [vlanId]: vlan },
+      log: [
+        ...state.log,
+        {
+          id: genId("log"),
+          tick: state.tick,
+          message: existing
+            ? `Renamed VLAN ${vlanId} to "${name}"`
+            : `Created VLAN ${vlanId} "${name}"`,
+          category: "network",
+        },
+      ],
+    },
+  };
+}
+
+function removeVlanAction(state: GameState, vlanId: number): EngineResult {
+  if (vlanId === 1) return { state, error: "Cannot delete default VLAN 1" };
+  if (!state.vlans[vlanId]) return { state, error: `VLAN ${vlanId} not found` };
+
+  const { [vlanId]: _removed, ...remainingVlans } = state.vlans;
+
+  // Cascade: reset ports referencing this VLAN
+  const newDevices = { ...state.devices };
+  for (const dev of Object.values(state.devices)) {
+    if (dev.type !== "switch") continue;
+    let portsChanged = false;
+    const newPorts = dev.ports.map((port) => {
+      if (port.vlanMode === "access" && port.accessVlan === vlanId) {
+        portsChanged = true;
+        return { ...port, accessVlan: 1 };
+      }
+      if (port.vlanMode === "trunk" && port.trunkAllowedVlans.includes(vlanId)) {
+        portsChanged = true;
+        const filtered = port.trunkAllowedVlans.filter((v) => v !== vlanId);
+        if (filtered.length === 0) {
+          // No VLANs left on trunk — reset to access mode on VLAN 1
+          return { ...port, vlanMode: "access" as const, accessVlan: 1, trunkAllowedVlans: [] };
+        }
+        return { ...port, trunkAllowedVlans: filtered };
+      }
+      return port;
+    });
+    if (portsChanged) {
+      newDevices[dev.id] = { ...dev, ports: newPorts };
+    }
+  }
+
+  return {
+    state: {
+      ...state,
+      vlans: remainingVlans,
+      devices: newDevices,
+      log: [
+        ...state.log,
+        {
+          id: genId("log"),
+          tick: state.tick,
+          message: `Deleted VLAN ${vlanId}`,
+          category: "network",
+        },
+      ],
+    },
+  };
+}
+
+function setPortVlan(
+  state: GameState,
+  deviceId: string,
+  portIndex: number,
+  mode: "access" | "trunk",
+  accessVlan?: number,
+  trunkAllowedVlans?: number[],
+): EngineResult {
+  const device = state.devices[deviceId];
+  if (!device) return { state, error: "Device not found" };
+  if (device.type !== "switch") return { state, error: "Only switches support port VLAN configuration" };
+
+  if (portIndex < 0 || portIndex >= device.ports.length) {
+    return { state, error: `Port index ${portIndex} out of range` };
+  }
+
+  if (mode === "access") {
+    const vlan = accessVlan ?? 1;
+    if (!state.vlans[vlan]) return { state, error: `VLAN ${vlan} does not exist` };
+
+    const newPorts = device.ports.map((p, i) =>
+      i === portIndex ? { ...p, vlanMode: "access" as const, accessVlan: vlan, trunkAllowedVlans: [] } : p,
+    );
+    return {
+      state: {
+        ...state,
+        devices: { ...state.devices, [deviceId]: { ...device, ports: newPorts } },
+        log: [
+          ...state.log,
+          {
+            id: genId("log"),
+            tick: state.tick,
+            message: `Set ${device.name} port ${portIndex} to access VLAN ${vlan}`,
+            category: "network",
+          },
+        ],
+      },
+    };
+  }
+
+  // Trunk mode
+  const allowed = trunkAllowedVlans ?? [1];
+  for (const v of allowed) {
+    if (!state.vlans[v]) return { state, error: `VLAN ${v} does not exist` };
+  }
+
+  const newPorts = device.ports.map((p, i) =>
+    i === portIndex ? { ...p, vlanMode: "trunk" as const, accessVlan: 1, trunkAllowedVlans: allowed } : p,
+  );
+  return {
+    state: {
+      ...state,
+      devices: { ...state.devices, [deviceId]: { ...device, ports: newPorts } },
+      log: [
+        ...state.log,
+        {
+          id: genId("log"),
+          tick: state.tick,
+          message: `Set ${device.name} port ${portIndex} to trunk (VLANs: ${allowed.join(", ")})`,
+          category: "network",
+        },
+      ],
+    },
+  };
+}
+
+function configureServerNetwork(
+  state: GameState,
+  deviceId: string,
+  ip: string | null,
+  mask: number | null,
+  gateway: string | null,
+): EngineResult {
+  const device = state.devices[deviceId];
+  if (!device) return { state, error: "Device not found" };
+  if (device.type !== "server") return { state, error: "Only servers support network configuration" };
+
+  if (ip !== null) {
+    if (!isValidIp(ip)) return { state, error: `Invalid IP address: ${ip}` };
+    if (mask === null || mask < 0 || mask > 32) return { state, error: `Invalid subnet mask: ${mask}` };
+
+    const conflict = hasIpConflict(state, ip, deviceId);
+    if (conflict) return { state, error: `IP ${ip} is already assigned to ${conflict.name}` };
+  }
+
+  if (gateway !== null) {
+    if (!isValidIp(gateway)) return { state, error: `Invalid gateway: ${gateway}` };
+    if (ip === null || mask === null) return { state, error: "IP and mask must be set before configuring a gateway" };
+    if (gateway === ip) return { state, error: "Gateway cannot be the same as server IP" };
+  }
+
+  const serverCfg = device.config as ServerConfig;
+  const newConfig: ServerConfig = { ...serverCfg, ip, mask, gateway };
+
+  return {
+    state: {
+      ...state,
+      devices: {
+        ...state.devices,
+        [deviceId]: { ...device, config: newConfig },
+      },
+      log: [
+        ...state.log,
+        {
+          id: genId("log"),
+          tick: state.tick,
+          message: ip
+            ? `Configured ${device.name} network: ${ip}/${mask}${gateway ? ` gw ${gateway}` : ""}`
+            : `Cleared network config on ${device.name}`,
+          category: "network",
+        },
+      ],
+    },
+  };
+}
+
+function toggleService(
+  state: GameState,
+  deviceId: string,
+  serviceIndex: number,
+  enabled: boolean,
+): EngineResult {
+  const device = state.devices[deviceId];
+  if (!device) return { state, error: "Device not found" };
+  if (device.type !== "server") return { state, error: "Only servers have services" };
+
+  const serverCfg = device.config as ServerConfig;
+  if (serviceIndex < 0 || serviceIndex >= serverCfg.services.length) {
+    return { state, error: `Service index ${serviceIndex} out of range` };
+  }
+
+  const newServices = serverCfg.services.map((s, i) =>
+    i === serviceIndex ? { ...s, enabled } : s,
+  );
+  const newConfig: ServerConfig = { ...serverCfg, services: newServices };
+
+  return {
+    state: {
+      ...state,
+      devices: {
+        ...state.devices,
+        [deviceId]: { ...device, config: newConfig },
+      },
+      log: [
+        ...state.log,
+        {
+          id: genId("log"),
+          tick: state.tick,
+          message: `${enabled ? "Enabled" : "Disabled"} ${serverCfg.services[serviceIndex].name} on ${device.name}`,
+          category: "network",
+        },
+      ],
+    },
+  };
+}
+
+function configureSwitchManagement(
+  state: GameState,
+  deviceId: string,
+  managementIp: string | null,
+  managementMask: number | null,
+): EngineResult {
+  const device = state.devices[deviceId];
+  if (!device) return { state, error: "Device not found" };
+  if (device.type !== "switch") return { state, error: "Only switches support management IP configuration" };
+
+  if (managementIp !== null) {
+    if (!isValidIp(managementIp)) return { state, error: `Invalid IP address: ${managementIp}` };
+    if (managementMask === null || managementMask < 0 || managementMask > 32) {
+      return { state, error: `Invalid subnet mask: ${managementMask}` };
+    }
+
+    const conflict = hasIpConflict(state, managementIp, deviceId);
+    if (conflict) return { state, error: `IP ${managementIp} is already assigned to ${conflict.name}` };
+  }
+
+  const switchCfg = device.config as SwitchConfig;
+  const newConfig: SwitchConfig = { ...switchCfg, managementIp, managementMask };
+
+  return {
+    state: {
+      ...state,
+      devices: {
+        ...state.devices,
+        [deviceId]: { ...device, config: newConfig },
+      },
+      log: [
+        ...state.log,
+        {
+          id: genId("log"),
+          tick: state.tick,
+          message: managementIp
+            ? `Set ${device.name} management IP: ${managementIp}/${managementMask}`
+            : `Cleared management IP on ${device.name}`,
+          category: "network",
+        },
+      ],
+    },
+  };
+}
+
+// --- Browser target resolution (query, not action) ---
+
+/** Check if a device owns a specific IP address */
+function deviceOwnsIp(device: Device, targetIp: string): boolean {
+  const cfg = device.config;
+  if ("interfaces" in cfg) {
+    const ifaces = cfg.interfaces as Record<number, InterfaceConfig>;
+    for (const iface of Object.values(ifaces)) {
+      if (iface.ip === targetIp) return true;
+    }
+  }
+  if ("ip" in cfg && cfg.ip === targetIp) return true;
+  if ("managementIp" in cfg && cfg.managementIp === targetIp) return true;
+  return false;
+}
+
+export function resolveBrowserTarget(
+  state: GameState,
+  targetIp: string,
+): ResolveBrowserTargetResult {
+  for (const device of Object.values(state.devices)) {
+    if (deviceOwnsIp(device, targetIp)) {
+      return { found: true, targetDeviceId: device.id, reason: "ok" };
+    }
+  }
+  return { found: false, reason: "no_device" };
 }

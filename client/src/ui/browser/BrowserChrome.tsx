@@ -1,6 +1,7 @@
 import { useState, useCallback } from "react";
 import { useBrowserStore, routeToDisplayUrl, ZOOM_STEPS } from "./browserStore";
 import type { BrowserRoute } from "./browserStore";
+import { rpcClient } from "../../rpc/client";
 import { THEME } from "../theme";
 
 export function BrowserChrome() {
@@ -23,17 +24,34 @@ export function BrowserChrome() {
 
   const [editing, setEditing] = useState(false);
 
-  const handleAddressSubmit = useCallback(() => {
+  const handleAddressSubmit = useCallback(async () => {
     setEditing(false);
-    const text = useBrowserStore.getState().addressBarText.trim();
+    const store = useBrowserStore.getState();
+    const text = store.addressBarText.trim();
 
     // Parse the address bar text into a route
     const route = parseAddressBarInput(text);
-    if (route) {
-      navigate(route);
-    } else {
+    if (!route) {
       navigate({ type: "error", code: "not_found", message: `Cannot resolve: ${text}` });
+      return;
     }
+
+    // For device routes in network mode, resolve via server
+    if (route.type === "device" && store.accessMode === "network") {
+      try {
+        const result = await rpcClient.call("resolveBrowserTarget", { targetIp: route.ip });
+        if (!result.found) {
+          navigate({ type: "error", code: "not_found", message: `No device found at ${route.ip}` });
+          return;
+        }
+        navigate({ ...route, deviceId: result.targetDeviceId! });
+      } catch (e) {
+        navigate({ type: "error", code: "not_found", message: (e as Error).message });
+      }
+      return;
+    }
+
+    navigate(route);
   }, [navigate]);
 
   const title = getRouteTitle(route, accessMode);

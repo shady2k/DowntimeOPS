@@ -20,6 +20,15 @@ export type {
   GetSnapshotResult,
   RpcMethods,
   RpcMethodName,
+  // Phase 2
+  ConfigureVlanParams,
+  RemoveVlanParams,
+  SetPortVlanParams,
+  ConfigureServerNetworkParams,
+  ToggleServiceParams,
+  ConfigureSwitchManagementParams,
+  ResolveBrowserTargetParams,
+  ResolveBrowserTargetResult,
 } from "./methods";
 
 export type {

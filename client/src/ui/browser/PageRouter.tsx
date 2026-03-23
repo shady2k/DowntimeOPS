@@ -5,6 +5,8 @@ import { getDeviceIp } from "@downtime-ops/shared";
 import type { GameState, Device } from "@downtime-ops/shared";
 import { HomePage } from "./pages/HomePage";
 import { RouterManagementPage } from "./pages/RouterManagementPage";
+import { SwitchManagementPage } from "./pages/SwitchManagementPage";
+import { ServerManagementPage } from "./pages/ServerManagementPage";
 import { ErrorPage } from "./pages/ErrorPage";
 import { ShopPage } from "./pages/ShopPage";
 import { DocsPage } from "./pages/DocsPage";
@@ -35,9 +37,10 @@ function renderRoute(route: BrowserRoute, state: GameState) {
     }
 
     case "device": {
-      // For network access, we need to resolve IP → device
-      // For now, find device by IP
-      const device = findDeviceByIp(state, route.ip);
+      // Use resolved deviceId if available (from resolveBrowserTarget), otherwise fallback to IP scan
+      const device = route.deviceId
+        ? state.devices[route.deviceId]
+        : findDeviceByIp(state, route.ip);
       if (!device) {
         return <ErrorPage code="not_found" message={`No device found at ${route.ip}`} />;
       }
@@ -67,11 +70,13 @@ function renderDeviceManagement(device: Device, _subpage?: string) {
     case "router":
       return <RouterManagementPage deviceId={device.id} />;
     case "switch":
+      return <SwitchManagementPage deviceId={device.id} />;
     case "server":
+      return <ServerManagementPage deviceId={device.id} />;
     case "firewall":
       return (
         <div style={{ padding: 20, color: THEME.colors.textMuted, fontFamily: THEME.fonts.body, fontSize: 12 }}>
-          {device.type} management UI — coming in Phase 2
+          Firewall management UI — coming soon
         </div>
       );
     default:
