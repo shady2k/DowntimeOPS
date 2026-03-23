@@ -1,5 +1,17 @@
 export type { GameState } from "./GameState";
-export type { Device, DeviceType, DeviceStatus, DeviceConfig } from "./Device";
+export type {
+  Device,
+  DeviceType,
+  DeviceStatus,
+  DeviceConfig,
+  TypedDeviceConfig,
+  RouterConfig,
+  SwitchConfig,
+  ServerConfig,
+  FirewallConfig,
+  InterfaceConfig,
+} from "./Device";
+export { getDeviceIp } from "./Device";
 export type { Port, PortType, PortStatus } from "./Port";
 export type { Link, CableType } from "./Link";
 export type { Connection, ConnectionHop } from "./Connection";

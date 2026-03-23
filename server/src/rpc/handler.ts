@@ -243,6 +243,48 @@ export function handleRpcRequest(
           shelfId: (params as Record<string, unknown>).shelfId as string,
         });
 
+      // --- Device configuration ---
+
+      case "configureInterface": {
+        const p = params as Record<string, unknown>;
+        return handleAction(server, id, {
+          type: "CONFIGURE_INTERFACE",
+          deviceId: p.deviceId as string,
+          portIndex: p.portIndex as number,
+          ip: (p.ip as string) ?? null,
+          mask: (p.mask as number) ?? null,
+          enabled: p.enabled !== false,
+        });
+      }
+
+      case "addStaticRoute": {
+        const state = server.getState()!;
+        const p = params as Record<string, unknown>;
+        const result = applyAction(state, {
+          type: "ADD_STATIC_ROUTE",
+          deviceId: p.deviceId as string,
+          destination: p.destination as string,
+          nextHop: p.nextHop as string,
+          metric: (p.metric as number) || 1,
+        });
+        if (result.error) return rpcError(id, -32000, result.error);
+        server.setState(result.state);
+        return rpcSuccess(id, { routeId: (result as { routeId?: string }).routeId });
+      }
+
+      case "removeRoute":
+        return handleAction(server, id, {
+          type: "REMOVE_ROUTE",
+          routeId: (params as Record<string, unknown>).routeId as string,
+        });
+
+      case "setDeviceHostname":
+        return handleAction(server, id, {
+          type: "SET_HOSTNAME",
+          deviceId: (params as Record<string, unknown>).deviceId as string,
+          hostname: (params as Record<string, unknown>).hostname as string,
+        });
+
       case "getSnapshot":
         return rpcSuccess(id, { state: server.getState() });
 

@@ -1,6 +1,7 @@
 import Phaser from "phaser";
 import type { WorldState, ItemInstance, RoomId, Interactable } from "@downtime-ops/shared";
 import { useGameStore } from "../../store/gameStore";
+import { useBrowserStore } from "../../ui/browser/browserStore";
 import { rpcClient } from "../../rpc/client";
 import { AssetRegistry } from "../../assets/AssetRegistry";
 import type { BackgroundDescriptor } from "../../assets/AssetDescriptors";
@@ -494,9 +495,8 @@ export class WorldScene extends Phaser.Scene {
   // --- Update loop ---
 
   update(_time: number, _delta: number) {
-    // Skip all input when shop overlay is open (rack view uses scene switch, not overlay)
-    const view = useGameStore.getState().activeView;
-    if (view === "shop") {
+    // Skip all input when browser overlay is open (rack view uses scene switch, not overlay)
+    if (useBrowserStore.getState().open) {
       this.playerBody.setVelocity(0, 0);
       if (this.playerSprite.anims.isPlaying) {
         this.playerSprite.stop();
@@ -751,7 +751,7 @@ export class WorldScene extends Phaser.Scene {
     }
 
     if (kind === "staff_computer" || kind === "laptop") {
-      useGameStore.getState().openShop();
+      useBrowserStore.getState().openBrowser("network");
       return;
     }
 

@@ -21,6 +21,7 @@ export type DevicePortGeometry = {
 
 type DeviceFaceGeometry = {
   statusLed: { x: number; y: number };
+  consolePort?: { x: number; y: number };
   ports: DevicePortGeometry[];
 };
 
@@ -70,9 +71,10 @@ function buildSwitch24pGeometry(): DeviceFaceGeometry {
 }
 
 const DEVICE_FACE_GEOMETRY: Record<string, DeviceFaceGeometry> = {
-  switch_24p: buildSwitch24pGeometry(),
+  switch_24p: { ...buildSwitch24pGeometry(), consolePort: { x: normX(303), y: normY(8.5) } },
   router_1u: {
     statusLed: { x: normX(65), y: normY(9) },
+    consolePort: { x: normX(164), y: normY(8.5) },
     ports: [
       { x: normX(88), y: normY(9), ledX: normX(86), ledY: normY(4.8), actLedX: normX(90), actLedY: normY(4.8) },
       { x: normX(107), y: normY(9), ledX: normX(105), ledY: normY(4.8), actLedX: normX(109), actLedY: normY(4.8) },
@@ -82,6 +84,7 @@ const DEVICE_FACE_GEOMETRY: Record<string, DeviceFaceGeometry> = {
   },
   firewall_1u: {
     statusLed: { x: normX(65), y: normY(9) },
+    consolePort: { x: normX(169), y: normY(8.5) },
     ports: [
       { x: normX(88), y: normY(9), ledX: normX(86), ledY: normY(4.8), actLedX: normX(90), actLedY: normY(4.8) },
       { x: normX(108), y: normY(9), ledX: normX(106), ledY: normY(4.8), actLedX: normX(110), actLedY: normY(4.8) },
@@ -91,6 +94,7 @@ const DEVICE_FACE_GEOMETRY: Record<string, DeviceFaceGeometry> = {
   },
   server_1u: {
     statusLed: { x: normX(82), y: normY(9) },
+    // Servers don't have front-panel console ports (use IPMI/network)
     ports: [
       { x: normX(179), y: normY(6), ledX: normX(178), ledY: normY(6), actLedX: normX(180), actLedY: normY(6) },
       { x: normX(184), y: normY(6), ledX: normX(183), ledY: normY(6), actLedX: normX(185), actLedY: normY(6) },

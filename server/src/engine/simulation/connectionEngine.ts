@@ -5,6 +5,7 @@ import type {
   Link,
   Device,
 } from "@downtime-ops/shared";
+import { getDeviceIp } from "@downtime-ops/shared";
 import { BALANCE } from "../config/balance";
 
 /** Build adjacency list from active links with up ports */
@@ -184,7 +185,7 @@ export function createConnection(
   }
 
   const connId = `conn-${crypto.randomUUID()}`;
-  const srcIp = (server.config.ip as string) || "10.0.0.10";
+  const srcIp = getDeviceIp(server) || "10.0.0.10";
   const dstIp = `203.0.113.${Math.floor(Math.random() * 254) + 1}`;
 
   const connection: Connection = {

@@ -1,0 +1,87 @@
+import { useBrowserStore } from "./browserStore";
+import type { BrowserRoute } from "./browserStore";
+import { useGameStore } from "../../store/gameStore";
+import { getDeviceIp } from "@downtime-ops/shared";
+import type { GameState, Device } from "@downtime-ops/shared";
+import { HomePage } from "./pages/HomePage";
+import { RouterManagementPage } from "./pages/RouterManagementPage";
+import { ErrorPage } from "./pages/ErrorPage";
+import { ShopPage } from "./pages/ShopPage";
+import { DocsPage } from "./pages/DocsPage";
+import { THEME } from "../theme";
+
+export function PageRouter() {
+  const route = useBrowserStore((s) => s.route);
+  const state = useGameStore((s) => s.state);
+
+  if (!state) {
+    return <ErrorPage code="not_found" message="No game state" />;
+  }
+
+  return renderRoute(route, state);
+}
+
+function renderRoute(route: BrowserRoute, state: GameState) {
+  switch (route.type) {
+    case "home":
+      return <HomePage />;
+
+    case "console": {
+      const device = state.devices[route.deviceId];
+      if (!device) {
+        return <ErrorPage code="not_found" message={`Device not found: ${route.deviceId}`} />;
+      }
+      return renderDeviceManagement(device, route.subpage);
+    }
+
+    case "device": {
+      // For network access, we need to resolve IP → device
+      // For now, find device by IP
+      const device = findDeviceByIp(state, route.ip);
+      if (!device) {
+        return <ErrorPage code="not_found" message={`No device found at ${route.ip}`} />;
+      }
+      return renderDeviceManagement(device, route.subpage);
+    }
+
+    case "shop":
+      return <ShopPage />;
+
+    case "docs":
+      return <DocsPage article={route.article} />;
+
+    case "ipam":
+      return (
+        <div style={{ padding: 20, color: THEME.colors.textMuted, fontFamily: THEME.fonts.body, fontSize: 12 }}>
+          IPAM tool — coming in Phase 3
+        </div>
+      );
+
+    case "error":
+      return <ErrorPage code={route.code} message={route.message} />;
+  }
+}
+
+function renderDeviceManagement(device: Device, _subpage?: string) {
+  switch (device.type) {
+    case "router":
+      return <RouterManagementPage deviceId={device.id} />;
+    case "switch":
+    case "server":
+    case "firewall":
+      return (
+        <div style={{ padding: 20, color: THEME.colors.textMuted, fontFamily: THEME.fonts.body, fontSize: 12 }}>
+          {device.type} management UI — coming in Phase 2
+        </div>
+      );
+    default:
+      return <ErrorPage code="not_found" message={`No management interface for ${device.type}`} />;
+  }
+}
+
+function findDeviceByIp(state: GameState, ip: string): Device | null {
+  for (const device of Object.values(state.devices)) {
+    if (getDeviceIp(device) === ip) return device;
+  }
+  return null;
+}

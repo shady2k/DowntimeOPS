@@ -5,11 +5,12 @@ import type {
   HopDecision,
   Device,
 } from "@downtime-ops/shared";
+import { getDeviceIp } from "@downtime-ops/shared";
 
 /** Find a device by its assigned IP */
 function findDeviceByIp(state: GameState, ip: string): Device | null {
   for (const device of Object.values(state.devices)) {
-    if (device.config.ip === ip) return device;
+    if (getDeviceIp(device) === ip) return device;
   }
   return null;
 }
@@ -140,7 +141,7 @@ function stepServer(
   device: Device,
 ): TracerPacket {
   // Check if this is the destination
-  if (device.config.ip === packet.dstIp) {
+  if (getDeviceIp(device) === packet.dstIp) {
     const hop: PacketHop = {
       deviceId: device.id,
       portIn: packet.currentPortIndex,

@@ -1,8 +1,9 @@
 import { useEffect } from "react";
 import { setupReconciler } from "./sync/reconciler";
 import { useGameStore } from "./store/gameStore";
+import { useBrowserStore } from "./ui/browser/browserStore";
 import { PhaserGame } from "./renderer/PhaserGame";
-import { ShopBrowser } from "./ui/shop/ShopBrowser";
+import { GameBrowser } from "./ui/browser/GameBrowser";
 import { InventoryHUD } from "./ui/hud/InventoryHUD";
 import { MainMenu } from "./ui/MainMenu";
 import { THEME } from "./ui/theme";
@@ -20,7 +21,8 @@ function App() {
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.key === "Escape" && appMode === "playing") {
-        // Don't open pause menu when closing rack view — RackScene handles its own ESC
+        // Don't open pause menu when browser or rack is open — they handle their own ESC
+        if (useBrowserStore.getState().open) return;
         const view = useGameStore.getState().activeView;
         if (view === "rack") return;
         e.preventDefault();
@@ -63,7 +65,7 @@ function App() {
     <div style={{ width: "100vw", height: "100vh", overflow: "hidden", position: "relative" }}>
       <PhaserGame />
       <InventoryHUD />
-      <ShopBrowser />
+      <GameBrowser />
       {pauseMenuOpen && <MainMenu />}
     </div>
   );

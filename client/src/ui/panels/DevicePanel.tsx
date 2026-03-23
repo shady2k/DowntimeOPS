@@ -1,6 +1,7 @@
 import { useGameStore } from "../../store/gameStore";
 import { rpcClient } from "../../rpc/client";
 import type { Device, Port, GameState } from "@downtime-ops/shared";
+import { getDeviceIp } from "@downtime-ops/shared";
 import { THEME, headingStyle, buttonStyle, statusDot } from "../theme";
 
 export function DevicePanel() {
@@ -35,8 +36,8 @@ export function DevicePanel() {
         <Row label="Model" value={device.model} />
         <Row label="Slot" value={`U${device.slotU}`} />
         <Row label="Power" value={`${device.powerDrawWatts}W`} />
-        {device.config.ip ? (
-          <Row label="IP" value={String(device.config.ip)} />
+        {getDeviceIp(device) ? (
+          <Row label="IP" value={getDeviceIp(device)!} />
         ) : null}
       </div>
 

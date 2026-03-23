@@ -1,6 +1,7 @@
 import Phaser from "phaser";
 import type { GameState, Device, Port, Link, CableType } from "@downtime-ops/shared";
 import { useGameStore } from "../store/gameStore";
+import { useBrowserStore } from "../ui/browser/browserStore";
 import { rpcClient } from "../rpc/client";
 import { RACK, PORT, PALETTE, TEXT_COLORS } from "./TextureGenerator";
 import { AssetRegistry } from "../assets/AssetRegistry";
@@ -80,6 +81,14 @@ type PortHitZone = {
   worldY: number;
 };
 
+type ConsoleHitZone = {
+  zone: Phaser.GameObjects.Zone;
+  debug?: Phaser.GameObjects.Graphics;
+  deviceId: string;
+  worldX: number;
+  worldY: number;
+};
+
 type RackLayout = {
   imgW: number;
   imgH: number;
@@ -114,6 +123,7 @@ export class RackScene extends Phaser.Scene {
   // ── Rack visuals ────────────────────────────────────────
   private deviceVisuals = new Map<string, DeviceVisual>();
   private portHitZones: PortHitZone[] = [];
+  private consoleHitZones: ConsoleHitZone[] = [];
   private cableGraphics: Phaser.GameObjects.Graphics | null = null;
   private pulseGraphics: Phaser.GameObjects.Graphics | null = null;
   private previewGraphics: Phaser.GameObjects.Graphics | null = null;
@@ -422,8 +432,17 @@ export class RackScene extends Phaser.Scene {
       if (!pointer.leftButtonDown()) return;
       if (this.isPointerOverOverlayButtons(pointer)) return;
 
-      // Manual port hit-testing — zones don't reliably receive input through zoomed cameras
+      // Manual hit-testing — zones don't reliably receive input through zoomed cameras
       const worldPoint = this.rackCam.getWorldPoint(pointer.x, pointer.y);
+
+      // Console port check first — opens browser
+      const hitConsole = this.findConsoleAtWorld(worldPoint.x, worldPoint.y);
+      if (hitConsole) {
+        this.blockPan = true;
+        useBrowserStore.getState().openBrowser("console", hitConsole.deviceId);
+        return;
+      }
+
       const hitPort = this.findPortAtWorld(worldPoint.x, worldPoint.y);
       if (hitPort) {
         this.blockPan = true;
@@ -507,6 +526,9 @@ export class RackScene extends Phaser.Scene {
       this.showDebugZones = !this.showDebugZones;
       for (const phz of this.portHitZones) {
         phz.debug?.setVisible(this.showDebugZones);
+      }
+      for (const chz of this.consoleHitZones) {
+        chz.debug?.setVisible(this.showDebugZones);
       }
     });
 
@@ -1161,6 +1183,13 @@ export class RackScene extends Phaser.Scene {
     }
     this.portHitZones = [];
 
+    // Destroy old console hit zones
+    for (const chz of this.consoleHitZones) {
+      chz.zone.destroy();
+      chz.debug?.destroy();
+    }
+    this.consoleHitZones = [];
+
     // Destroy tooltip
     this.tooltip?.destroy();
     this.tooltip = null;
@@ -1439,6 +1468,35 @@ export class RackScene extends Phaser.Scene {
         worldY,
       });
     }
+
+    // ── Console port hit zone ──
+    if (geometry.consolePort) {
+      const conX = geometry.consolePort.x * devW;
+      const conY = geometry.consolePort.y * h;
+      const conWorldX = this.deviceX() + conX;
+      const conWorldY = this.slotY(device.slotU) + 1 + conY;
+      const conSize = portHitRadius * 2.2; // slightly larger than network ports
+
+      const conZone = this.add
+        .zone(conWorldX, conWorldY, conSize, conSize)
+        .setDepth(DEPTH.DRAG_OVERLAY)
+        .setInteractive({ useHandCursor: true });
+
+      const conDbg = this.add.graphics().setDepth(DEPTH.DRAG_OVERLAY + 1);
+      conDbg.lineStyle(0.3, 0x00ffff, 0.6);
+      conDbg.strokeRect(conWorldX - conSize / 2, conWorldY - conSize / 2, conSize, conSize);
+      conDbg.fillStyle(0x00ffff, 0.8);
+      conDbg.fillCircle(conWorldX, conWorldY, 0.4);
+      conDbg.setVisible(this.showDebugZones);
+
+      this.consoleHitZones.push({
+        zone: conZone,
+        debug: conDbg,
+        deviceId: device.id,
+        worldX: conWorldX,
+        worldY: conWorldY,
+      });
+    }
   }
 
   /** Find a port hit zone at the given world coordinates */
@@ -1446,10 +1504,22 @@ export class RackScene extends Phaser.Scene {
     for (const phz of this.portHitZones) {
       const dx = Math.abs(wx - phz.worldX);
       const dy = Math.abs(wy - phz.worldY);
-      // Use the zone's half-size for hit testing
       const halfSize = phz.zone.width / 2;
       if (dx <= halfSize && dy <= halfSize) {
         return phz;
+      }
+    }
+    return null;
+  }
+
+  /** Find a console port hit zone at the given world coordinates */
+  private findConsoleAtWorld(wx: number, wy: number): ConsoleHitZone | null {
+    for (const chz of this.consoleHitZones) {
+      const dx = Math.abs(wx - chz.worldX);
+      const dy = Math.abs(wy - chz.worldY);
+      const halfSize = chz.zone.width / 2;
+      if (dx <= halfSize && dy <= halfSize) {
+        return chz;
       }
     }
     return null;

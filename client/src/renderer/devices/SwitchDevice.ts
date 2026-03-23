@@ -6,7 +6,7 @@
  * Phaser key: "device-switch" | JSON: device-switch-24p.json
  */
 
-import { label, rj45, sfp, usb, vents, svgDoc } from "./DeviceBuilder";
+import { label, rj45, sfp, consolePort, usb, vents, svgDoc } from "./DeviceBuilder";
 
 export function buildSwitchSvg(): string {
   const portW = 13;
@@ -24,8 +24,9 @@ export function buildSwitchSvg(): string {
   }
 
   const sfpX = startX + 12 * stride + 3;   // ≈ 261
-  const usbX = sfpX + 14 + 3 + 14 + 5;    // ≈ 297
-  const ventX = usbX + 9 + 4;              // ≈ 310
+  const conX = sfpX + 14 + 3 + 14 + 5;    // ≈ 297
+  const usbX = conX + 12 + 4;             // ≈ 313
+  const ventX = usbX + 9 + 4;             // ≈ 326
 
   const content = `
   ${label('NX-24P', '#5a90b8')}
@@ -33,6 +34,7 @@ export function buildSwitchSvg(): string {
   ${ports}
   ${sfp(sfpX, 3)}
   ${sfp(sfpX + 17, 3)}
+  ${consolePort(conX, 4)}
   ${usb(usbX, 5)}
   ${vents(ventX, 405 - ventX)}`;
 

@@ -2,6 +2,7 @@ import { useState } from "react";
 import { useGameStore } from "../../store/gameStore";
 import { rpcClient } from "../../rpc/client";
 import type { TracerPacket } from "@downtime-ops/shared";
+import { getDeviceIp } from "@downtime-ops/shared";
 import { THEME, headingStyle, inputStyle, buttonStyle, cardStyle } from "../theme";
 
 export function TracerPanel() {
@@ -15,8 +16,8 @@ export function TracerPanel() {
 
   // Collect available IPs for quick selection
   const deviceIps = Object.values(state.devices)
-    .filter((d) => d.config.ip)
-    .map((d) => ({ name: d.name, ip: d.config.ip as string }));
+    .filter((d) => getDeviceIp(d))
+    .map((d) => ({ name: d.name, ip: getDeviceIp(d)! }));
 
   const startTrace = async () => {
     if (!srcIp || !dstIp) return;

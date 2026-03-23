@@ -126,6 +126,36 @@ export interface InstallDeviceFromStorageParams {
   slotU: number;
 }
 
+// --- Device configuration params ---
+
+export interface ConfigureInterfaceParams {
+  deviceId: string;
+  portIndex: number;
+  ip: string | null;
+  mask: number | null;
+  enabled: boolean;
+}
+
+export interface AddStaticRouteParams {
+  deviceId: string;
+  destination: string;
+  nextHop: string;
+  metric: number;
+}
+
+export interface RemoveRouteParams {
+  routeId: string;
+}
+
+export interface SetDeviceHostnameParams {
+  deviceId: string;
+  hostname: string;
+}
+
+export interface AddStaticRouteResult {
+  routeId: string;
+}
+
 // --- Result types ---
 
 export interface PlaceDeviceResult {
@@ -188,6 +218,12 @@ export interface RpcMethods {
   buyCartItems: { params: BuyCartItemsParams; result: BuyCartItemsResult };
   pickupFromStorage: { params: PickupFromStorageParams; result: void };
   installDeviceFromStorage: { params: InstallDeviceFromStorageParams; result: void };
+
+  // Device configuration
+  configureInterface: { params: ConfigureInterfaceParams; result: void };
+  addStaticRoute: { params: AddStaticRouteParams; result: AddStaticRouteResult };
+  removeRoute: { params: RemoveRouteParams; result: void };
+  setDeviceHostname: { params: SetDeviceHostnameParams; result: void };
 }
 
 export type RpcMethodName = keyof RpcMethods;

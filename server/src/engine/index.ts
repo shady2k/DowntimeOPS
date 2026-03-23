@@ -5,6 +5,12 @@ import type {
   CableType,
   Link,
   TracerPacket,
+  RouterConfig,
+  SwitchConfig,
+  ServerConfig,
+  TypedDeviceConfig,
+  InterfaceConfig,
+  Route,
 } from "@downtime-ops/shared";
 import { BALANCE } from "./config/balance";
 import {
@@ -61,6 +67,10 @@ export type Action =
   | { type: "ACCEPT_CLIENT"; clientId: string }
   | { type: "REJECT_CLIENT"; clientId: string }
   | { type: "SET_SPEED"; speed: number }
+  | { type: "CONFIGURE_INTERFACE"; deviceId: string; portIndex: number; ip: string | null; mask: number | null; enabled: boolean }
+  | { type: "ADD_STATIC_ROUTE"; deviceId: string; destination: string; nextHop: string; metric: number }
+  | { type: "REMOVE_ROUTE"; routeId: string }
+  | { type: "SET_HOSTNAME"; deviceId: string; hostname: string }
   | { type: "TICK" }
   | WorldAction;
 
@@ -176,6 +186,14 @@ export function applyAction(state: GameState, action: Action): EngineResult {
       return rejectClient(state, action.clientId);
     case "SET_SPEED":
       return setSpeed(state, action.speed);
+    case "CONFIGURE_INTERFACE":
+      return configureInterface(state, action.deviceId, action.portIndex, action.ip, action.mask, action.enabled);
+    case "ADD_STATIC_ROUTE":
+      return addStaticRoute(state, action.deviceId, action.destination, action.nextHop, action.metric);
+    case "REMOVE_ROUTE":
+      return removeRoute(state, action.routeId);
+    case "SET_HOSTNAME":
+      return setHostname(state, action.deviceId, action.hostname);
     case "TICK":
       return { state: processTick(state) };
 
@@ -244,14 +262,31 @@ export function advanceTracer(
 
 // --- Action handlers ---
 
-function assignIp(deviceType: string): string | undefined {
-  if (deviceType === "router") return "10.0.0.1";
-  if (deviceType === "server") {
-    const ip = `10.0.0.${nextServerIp}`;
-    nextServerIp++;
-    return ip;
+function createDeviceConfig(
+  template: EquipmentTemplate,
+  ports: Port[],
+): TypedDeviceConfig {
+  switch (template.type) {
+    case "router": {
+      const interfaces: Record<number, { ip: string | null; mask: number | null; enabled: boolean; description: string }> = {};
+      for (let i = 0; i < ports.length; i++) {
+        // Auto-assign suggested IP on first interface for guided setup
+        const suggestedIp = i === 0 ? "10.0.0.1" : null;
+        const suggestedMask = i === 0 ? 24 : null;
+        interfaces[i] = { ip: suggestedIp, mask: suggestedMask, enabled: true, description: "" };
+      }
+      return { hostname: template.name, interfaces } satisfies RouterConfig;
+    }
+    case "server": {
+      const ip = `10.0.0.${nextServerIp}`;
+      nextServerIp++;
+      return { hostname: template.name, ip, mask: 24, gateway: "10.0.0.1", services: [] } satisfies ServerConfig;
+    }
+    case "switch":
+      return { hostname: template.name, managementIp: null, managementMask: null } satisfies SwitchConfig;
+    default:
+      return {};
   }
-  return undefined;
 }
 
 function createPorts(
@@ -320,8 +355,8 @@ function placeDevice(
   }
 
   const deviceId = genId("dev");
-  const ip = assignIp(template.type);
   const ports = createPorts(deviceId, template);
+  const config = createDeviceConfig(template, ports);
 
   const device: Device = {
     id: deviceId,
@@ -336,7 +371,7 @@ function placeDevice(
     heatOutput: template.heatOutput,
     status: "online",
     health: 100,
-    config: ip ? { ip } : {},
+    config,
   };
 
   // Build new rack devices record
@@ -827,4 +862,195 @@ function setSpeed(state: GameState, speed: number): EngineResult {
     return { state, error: "Speed must be 0, 1, 2, or 3" };
   }
   return { state: { ...state, speed } };
+}
+
+// --- Device configuration handlers ---
+
+function isValidIp(ip: string): boolean {
+  const parts = ip.split(".");
+  if (parts.length !== 4) return false;
+  return parts.every((p) => {
+    const n = Number(p);
+    return Number.isInteger(n) && n >= 0 && n <= 255;
+  });
+}
+
+function configureInterface(
+  state: GameState,
+  deviceId: string,
+  portIndex: number,
+  ip: string | null,
+  mask: number | null,
+  enabled: boolean,
+): EngineResult {
+  const device = state.devices[deviceId];
+  if (!device) return { state, error: "Device not found" };
+
+  if (device.type !== "router" && device.type !== "firewall") {
+    return { state, error: `${device.type} does not support interface configuration` };
+  }
+
+  if (portIndex < 0 || portIndex >= device.ports.length) {
+    return { state, error: `Port index ${portIndex} out of range` };
+  }
+
+  if (ip !== null) {
+    if (!isValidIp(ip)) return { state, error: `Invalid IP address: ${ip}` };
+    if (mask === null || mask < 0 || mask > 32) return { state, error: `Invalid subnet mask: ${mask}` };
+
+    // Check for IP conflicts (another device already has this IP)
+    for (const dev of Object.values(state.devices)) {
+      if (dev.id === deviceId) continue;
+      const cfg = dev.config;
+      if ("interfaces" in cfg) {
+        const ifaces = cfg.interfaces as Record<number, InterfaceConfig>;
+        for (const iface of Object.values(ifaces)) {
+          if (iface.ip === ip) return { state, error: `IP ${ip} is already assigned to ${dev.name}` };
+        }
+      }
+      if ("ip" in cfg && cfg.ip === ip) return { state, error: `IP ${ip} is already assigned to ${dev.name}` };
+      if ("managementIp" in cfg && cfg.managementIp === ip) return { state, error: `IP ${ip} is already assigned to ${dev.name}` };
+    }
+  }
+
+  const routerCfg = device.config as RouterConfig;
+  const newInterfaces = { ...routerCfg.interfaces };
+  newInterfaces[portIndex] = {
+    ip,
+    mask,
+    enabled,
+    description: newInterfaces[portIndex]?.description ?? "",
+  };
+
+  const newConfig: RouterConfig = { ...routerCfg, interfaces: newInterfaces };
+
+  return {
+    state: {
+      ...state,
+      devices: {
+        ...state.devices,
+        [deviceId]: { ...device, config: newConfig },
+      },
+      log: [
+        ...state.log,
+        {
+          id: genId("log"),
+          tick: state.tick,
+          message: ip
+            ? `Configured ${device.name} port ${portIndex}: ${ip}/${mask}`
+            : `Cleared IP on ${device.name} port ${portIndex}`,
+          category: "network",
+        },
+      ],
+    },
+  };
+}
+
+function addStaticRoute(
+  state: GameState,
+  deviceId: string,
+  destination: string,
+  nextHop: string,
+  metric: number,
+): EngineResult & { routeId?: string } {
+  const device = state.devices[deviceId];
+  if (!device) return { state, error: "Device not found" };
+
+  if (device.type !== "router" && device.type !== "firewall") {
+    return { state, error: `${device.type} does not support routing` };
+  }
+
+  // Validate CIDR destination
+  const cidrParts = destination.split("/");
+  if (cidrParts.length !== 2 || !isValidIp(cidrParts[0])) {
+    return { state, error: `Invalid destination CIDR: ${destination}` };
+  }
+  const cidrMask = Number(cidrParts[1]);
+  if (!Number.isInteger(cidrMask) || cidrMask < 0 || cidrMask > 32) {
+    return { state, error: `Invalid destination mask: ${destination}` };
+  }
+
+  if (!isValidIp(nextHop)) {
+    return { state, error: `Invalid next hop: ${nextHop}` };
+  }
+
+  const routeId = genId("route");
+  const route: Route = {
+    id: routeId,
+    deviceId,
+    destination,
+    nextHop,
+    interface: "",
+    metric: metric || 1,
+    source: "static",
+  };
+
+  return {
+    state: {
+      ...state,
+      routes: [...state.routes, route],
+      log: [
+        ...state.log,
+        {
+          id: genId("log"),
+          tick: state.tick,
+          message: `Added route on ${device.name}: ${destination} via ${nextHop}`,
+          category: "network",
+        },
+      ],
+    },
+    routeId,
+  };
+}
+
+function removeRoute(state: GameState, routeId: string): EngineResult {
+  const route = state.routes.find((r) => r.id === routeId);
+  if (!route) return { state, error: "Route not found" };
+  if (route.source !== "static") return { state, error: "Can only remove static routes" };
+
+  return {
+    state: {
+      ...state,
+      routes: state.routes.filter((r) => r.id !== routeId),
+      log: [
+        ...state.log,
+        {
+          id: genId("log"),
+          tick: state.tick,
+          message: `Removed route: ${route.destination} via ${route.nextHop}`,
+          category: "network",
+        },
+      ],
+    },
+  };
+}
+
+function setHostname(
+  state: GameState,
+  deviceId: string,
+  hostname: string,
+): EngineResult {
+  const device = state.devices[deviceId];
+  if (!device) return { state, error: "Device not found" };
+
+  if (!hostname || hostname.length > 64) {
+    return { state, error: "Hostname must be 1-64 characters" };
+  }
+
+  const cfg = device.config;
+  if (!("hostname" in cfg)) {
+    return { state, error: `${device.type} does not support hostname configuration` };
+  }
+
+  const newConfig = { ...cfg, hostname } as TypedDeviceConfig;
+
+  return {
+    state: {
+      ...state,
+      devices: {
+        ...state.devices,
+        [deviceId]: { ...device, name: hostname, config: newConfig },
+      },
+    },
+  };
 }
