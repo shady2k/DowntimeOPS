@@ -11,8 +11,12 @@ export type BuiltDeviceVisual = {
 export type DevicePortGeometry = {
   x: number;
   y: number;
+  /** Link LED position (green when cable connected) */
   ledX?: number;
   ledY?: number;
+  /** Activity LED position (orange blink on traffic) — offset from link LED */
+  actLedX?: number;
+  actLedY?: number;
 };
 
 type DeviceFaceGeometry = {
@@ -35,14 +39,15 @@ function buildSwitch24pGeometry(): DeviceFaceGeometry {
   const ports: DevicePortGeometry[] = [];
   const startX = 78;
   const stride = 15;
-
   for (let col = 0; col < 12; col++) {
     const x = startX + col * stride + 6.5;
     ports.push({
       x: normX(x),
       y: normY(6),
-      ledX: normX(x),
+      ledX: normX(x - 1.5),
       ledY: normY(4.8),
+      actLedX: normX(x + 1.5),
+      actLedY: normY(4.8),
     });
   }
 
@@ -51,8 +56,10 @@ function buildSwitch24pGeometry(): DeviceFaceGeometry {
     ports.push({
       x: normX(x),
       y: normY(13),
-      ledX: normX(x),
+      ledX: normX(x - 1.5),
       ledY: normY(11.8),
+      actLedX: normX(x + 1.5),
+      actLedY: normY(11.8),
     });
   }
 
@@ -67,26 +74,26 @@ const DEVICE_FACE_GEOMETRY: Record<string, DeviceFaceGeometry> = {
   router_1u: {
     statusLed: { x: normX(65), y: normY(9) },
     ports: [
-      { x: normX(88), y: normY(9), ledX: normX(88), ledY: normY(4.8) },
-      { x: normX(107), y: normY(9), ledX: normX(107), ledY: normY(4.8) },
-      { x: normX(126), y: normY(9), ledX: normX(126), ledY: normY(4.8) },
-      { x: normX(145), y: normY(9), ledX: normX(145), ledY: normY(4.8) },
+      { x: normX(88), y: normY(9), ledX: normX(86), ledY: normY(4.8), actLedX: normX(90), actLedY: normY(4.8) },
+      { x: normX(107), y: normY(9), ledX: normX(105), ledY: normY(4.8), actLedX: normX(109), actLedY: normY(4.8) },
+      { x: normX(126), y: normY(9), ledX: normX(124), ledY: normY(4.8), actLedX: normX(128), actLedY: normY(4.8) },
+      { x: normX(145), y: normY(9), ledX: normX(143), ledY: normY(4.8), actLedX: normX(147), actLedY: normY(4.8) },
     ],
   },
   firewall_1u: {
     statusLed: { x: normX(65), y: normY(9) },
     ports: [
-      { x: normX(88), y: normY(9), ledX: normX(88), ledY: normY(4.8) },
-      { x: normX(108), y: normY(9), ledX: normX(108), ledY: normY(4.8) },
-      { x: normX(128), y: normY(9), ledX: normX(128), ledY: normY(4.8) },
-      { x: normX(148), y: normY(9), ledX: normX(148), ledY: normY(4.8) },
+      { x: normX(88), y: normY(9), ledX: normX(86), ledY: normY(4.8), actLedX: normX(90), actLedY: normY(4.8) },
+      { x: normX(108), y: normY(9), ledX: normX(106), ledY: normY(4.8), actLedX: normX(110), actLedY: normY(4.8) },
+      { x: normX(128), y: normY(9), ledX: normX(126), ledY: normY(4.8), actLedX: normX(130), actLedY: normY(4.8) },
+      { x: normX(148), y: normY(9), ledX: normX(146), ledY: normY(4.8), actLedX: normX(150), actLedY: normY(4.8) },
     ],
   },
   server_1u: {
     statusLed: { x: normX(82), y: normY(9) },
     ports: [
-      { x: normX(179), y: normY(6), ledX: normX(179), ledY: normY(6) },
-      { x: normX(184), y: normY(6), ledX: normX(184), ledY: normY(6) },
+      { x: normX(179), y: normY(6), ledX: normX(178), ledY: normY(6), actLedX: normX(180), actLedY: normY(6) },
+      { x: normX(184), y: normY(6), ledX: normX(183), ledY: normY(6), actLedX: normX(185), actLedY: normY(6) },
     ],
   },
 };
@@ -105,12 +112,18 @@ export function getDeviceFaceGeometry(device: Device): DeviceFaceGeometry {
       x: deviceDesc?.statusLed.x ?? normX(65),
       y: deviceDesc?.statusLed.y ?? normY(9),
     },
-    ports: Array.from({ length: count }, (_, index) => ({
-      x: startX + index * spacing,
-      y: deviceDesc?.portLayout.startY ?? 0.5,
-      ledX: startX + index * spacing,
-      ledY: deviceDesc?.portLayout.ledY ?? deviceDesc?.portLayout.startY ?? 0.5,
-    })),
+    ports: Array.from({ length: count }, (_, index) => {
+      const px = startX + index * spacing;
+      const ledOff = 1.5 / SVG_W;
+      return {
+        x: px,
+        y: deviceDesc?.portLayout.startY ?? 0.5,
+        ledX: px - ledOff,
+        ledY: deviceDesc?.portLayout.ledY ?? deviceDesc?.portLayout.startY ?? 0.5,
+        actLedX: px + ledOff,
+        actLedY: deviceDesc?.portLayout.ledY ?? deviceDesc?.portLayout.startY ?? 0.5,
+      };
+    }),
   };
 }
 
@@ -121,19 +134,6 @@ function getStatusLedColor(status: Device["status"]): number {
     case "failed":
       return PALETTE.portDown;
     case "degraded":
-      return PALETTE.portErr;
-    default:
-      return PALETTE.portOff;
-  }
-}
-
-function getPortLedColor(status: Device["ports"][number]["status"]): number {
-  switch (status) {
-    case "up":
-      return PALETTE.portUp;
-    case "down":
-      return PALETTE.portDown;
-    case "err_disabled":
       return PALETTE.portErr;
     default:
       return PALETTE.portOff;
@@ -185,31 +185,57 @@ export function buildRackDeviceVisual(
   for (let i = 0; i < maxVisible; i++) {
     const port = device.ports[i];
     const portGeom = geometry.ports[i];
-    const bodyX = portGeom.x * width;
-    const bodyY = portGeom.y * height;
     const ledX = (portGeom.ledX ?? portGeom.x) * width;
     const ledY = (portGeom.ledY ?? portGeom.y) * height;
-    const ledColor = getPortLedColor(port.status);
     const link = port.linkId ? state.links[port.linkId] : undefined;
+    const hasLink = !!port.linkId && port.status !== "err_disabled";
     const hasActivity = !!link && link.currentLoadMbps > 0;
+    // Simulate activity blink: use port index as seed for varied timing
+    const activityBlink = hasActivity
+      ? Math.random() > 0.3 // ~70% chance lit each frame → flickering effect
+      : false;
 
     const led = scene.add.graphics();
-    if (port.linkId && port.status === "up") {
-      led.fillStyle(ledColor, hasActivity ? 0.1 : 0.04);
-      led.fillCircle(ledX, ledY, hasActivity ? 1.05 : 0.8);
-    }
-    led.fillStyle(ledColor, port.status === "up" ? 0.95 : 0.5);
-    led.fillCircle(ledX, ledY, hasActivity ? 0.55 : 0.4);
-    led.fillStyle(0xffffff, 0.25);
-    led.fillCircle(ledX - 0.08, ledY - 0.08, 0.1);
-    container.add(led);
 
-    if (port.linkId) {
-      const ring = scene.add.graphics();
-      ring.lineStyle(0.4, PALETTE.portUp, 0.28);
-      ring.strokeCircle(bodyX, bodyY, 1.05);
-      container.add(ring);
+    // ── Link LED (left) — green when cable connected, off otherwise ──
+    if (hasLink) {
+      // Glow
+      led.fillStyle(PALETTE.portUp, 0.06);
+      led.fillCircle(ledX, ledY, 0.9);
+      // LED dot
+      led.fillStyle(PALETTE.portUp, 0.95);
+      led.fillCircle(ledX, ledY, 0.4);
+    } else if (port.status === "err_disabled") {
+      led.fillStyle(PALETTE.portErr, 0.7);
+      led.fillCircle(ledX, ledY, 0.4);
+    } else {
+      // No link — dim off
+      led.fillStyle(PALETTE.portOff, 0.3);
+      led.fillCircle(ledX, ledY, 0.3);
     }
+    // Specular highlight
+    led.fillStyle(0xffffff, 0.2);
+    led.fillCircle(ledX - 0.06, ledY - 0.06, 0.08);
+
+    // ── Activity LED (right) — orange blink on traffic ──
+    const actX = (portGeom.actLedX ?? portGeom.x + 0.008) * width;
+    const actY = (portGeom.actLedY ?? portGeom.y) * height;
+    if (activityBlink) {
+      // Glow
+      led.fillStyle(PALETTE.portErr, 0.08);
+      led.fillCircle(actX, actY, 0.9);
+      // LED dot
+      led.fillStyle(PALETTE.portErr, 0.9);
+      led.fillCircle(actX, actY, 0.4);
+    } else {
+      // Off
+      led.fillStyle(PALETTE.portOff, 0.2);
+      led.fillCircle(actX, actY, 0.3);
+    }
+    led.fillStyle(0xffffff, 0.15);
+    led.fillCircle(actX - 0.06, actY - 0.06, 0.08);
+
+    container.add(led);
   }
 
   if (device.ports.length > geometry.ports.length) {

@@ -34,6 +34,11 @@ export interface PortLayoutDescriptor {
   ledY?: number;
   /** Maximum number of ports to show in rack view before showing overflow label */
   maxVisible: number;
+  /**
+   * Interactive hit radius for each port, as a fraction of device height.
+   * Controls the clickable area around each port. Defaults to 0.5 when omitted.
+   */
+  portHitRadius?: number;
 }
 
 /** Single indicator LED overlay position */

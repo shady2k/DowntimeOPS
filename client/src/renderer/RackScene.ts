@@ -5,7 +5,7 @@ import { rpcClient } from "../rpc/client";
 import { RACK, PORT, PALETTE, TEXT_COLORS } from "./TextureGenerator";
 import { AssetRegistry } from "../assets/AssetRegistry";
 import { emitAudioEvent } from "./AudioEvents";
-import { getCableStyle, getCableExitX, drawCablePath, interpolateCablePath, getPulseColor } from "./CablePrefab";
+import { getCableStyle, drawCablePath, drawCablePreview, interpolateCablePath, getPulseColor } from "./CablePrefab";
 import { PerfMonitor } from "./PerfMonitor";
 import { buildRackDeviceVisual, getDeviceFaceGeometry } from "./DeviceVisualFactory";
 
@@ -73,6 +73,7 @@ type DeviceVisual = {
 
 type PortHitZone = {
   zone: Phaser.GameObjects.Zone;
+  debug?: Phaser.GameObjects.Graphics;
   deviceId: string;
   portIndex: number;
   worldX: number;
@@ -180,6 +181,9 @@ export class RackScene extends Phaser.Scene {
   private prevLinkIds = new Set<string>();
   private prevFailedDeviceIds = new Set<string>();
   private prevFailedPortKeys = new Set<string>();
+
+  // ── Debug ──────────────────────────────────────────────
+  private showDebugZones = false;
 
   // ── Performance ─────────────────────────────────────────
   private perfMonitor = new PerfMonitor();
@@ -413,15 +417,33 @@ export class RackScene extends Phaser.Scene {
       }
     });
 
-    // Left-click: start drag-to-pan in close-up, or double-click to toggle zoom
+    // Left-click: check ports first, then pan/zoom
     this.input.on("pointerdown", (pointer: Phaser.Input.Pointer) => {
       if (!pointer.leftButtonDown()) return;
       if (this.isPointerOverOverlayButtons(pointer)) return;
 
+      // Manual port hit-testing — zones don't reliably receive input through zoomed cameras
+      const worldPoint = this.rackCam.getWorldPoint(pointer.x, pointer.y);
+      const hitPort = this.findPortAtWorld(worldPoint.x, worldPoint.y);
+      if (hitPort) {
+        this.blockPan = true;
+        const freshStore = useGameStore.getState();
+        const freshState = freshStore.state;
+        if (freshState) {
+          const freshDevice = freshState.devices[hitPort.deviceId];
+          if (freshDevice) {
+            const freshPort = freshDevice.ports[hitPort.portIndex];
+            if (freshPort) {
+              this.handlePortClick(freshDevice, freshPort, hitPort.portIndex, freshState);
+              return;
+            }
+          }
+        }
+      }
+
       // Double-click detection → toggle zoom
       const now = this.time.now;
       if (now - this.lastBgTapTime < 300) {
-        const worldPoint = this.rackCam.getWorldPoint(pointer.x, pointer.y);
         this.toggleZoom(worldPoint.y);
         this.lastBgTapTime = 0;
         this.blockPan = false;
@@ -477,6 +499,15 @@ export class RackScene extends Phaser.Scene {
       this.scene.sleep("RackUIScene");
       this.scene.sleep("RackScene");
       this.scene.wake("WorldScene");
+    });
+
+    // F1: toggle debug hit zone overlays
+    this.input.keyboard?.on("keydown-F1", (e: KeyboardEvent) => {
+      e.preventDefault();
+      this.showDebugZones = !this.showDebugZones;
+      for (const phz of this.portHitZones) {
+        phz.debug?.setVisible(this.showDebugZones);
+      }
     });
 
     // Right-click cancel
@@ -1036,8 +1067,8 @@ export class RackScene extends Phaser.Scene {
       const posB = this.getPortWorldPos(devB, link.portB.portIndex);
       if (!posA || !posB) continue;
 
-      const exitX = getCableExitX(this.rl.x + this.rl.imgW, posA.y, posB.y);
-      const pos = interpolateCablePath(posA, posB, exitX, pulse.progress);
+      const bayRight = this.rl.x + this.rl.bayLeft + this.rl.bayWidth;
+      const pos = interpolateCablePath(posA, posB, bayRight, pulse.progress);
 
       const size = 2 + (link.currentLoadMbps / Math.max(link.maxBandwidthMbps, 1)) * 2;
       this.pulseGraphics.fillStyle(pulse.color, 0.3);
@@ -1124,7 +1155,10 @@ export class RackScene extends Phaser.Scene {
     }
 
     // Destroy old port hit zones
-    for (const phz of this.portHitZones) phz.zone.destroy();
+    for (const phz of this.portHitZones) {
+      phz.zone.destroy();
+      phz.debug?.destroy();
+    }
     this.portHitZones = [];
 
     // Destroy tooltip
@@ -1217,6 +1251,9 @@ export class RackScene extends Phaser.Scene {
 
       // Block background pan — device click should not start panning
       this.blockPan = true;
+
+      // During cabling mode, device zone should not interfere — let port zones handle it
+      if (store.cablingFrom) return;
 
       // Double-click → toggle zoom centered on device
       if (
@@ -1339,7 +1376,9 @@ export class RackScene extends Phaser.Scene {
     const devW = this.rl.bayWidth - 4;
     const geometry = getDeviceFaceGeometry(device);
     const maxVisible = Math.min(device.ports.length, geometry.ports.length);
-    const portHitRadius = 8;
+    const deviceDesc = AssetRegistry.getDevice(device.model);
+    const portHitFraction = deviceDesc?.portLayout.portHitRadius ?? 0.5;
+    const portHitRadius = portHitFraction * h;
     const cablingFrom = store.cablingFrom;
     const isCabling = !!cablingFrom;
     const isSourceDevice = cablingFrom?.deviceId === device.id;
@@ -1357,13 +1396,13 @@ export class RackScene extends Phaser.Scene {
 
         if (isSource) {
           const g = this.add.graphics();
-          g.lineStyle(1.5, PALETTE.highlight, 1);
-          g.strokeCircle(px, portBodyY, 4.5);
+          g.lineStyle(0.4, PALETTE.highlight, 0.9);
+          g.strokeCircle(px, portBodyY, 1.2);
           container.add(g);
         } else if (isValidTarget) {
           const g = this.add.graphics();
-          g.lineStyle(1, PALETTE.portUp, 0.7);
-          g.strokeCircle(px, portBodyY, 4);
+          g.lineStyle(0.3, PALETTE.portUp, 0.6);
+          g.strokeCircle(px, portBodyY, 1.0);
           container.add(g);
         }
       }
@@ -1372,26 +1411,48 @@ export class RackScene extends Phaser.Scene {
       const worldX = this.deviceX() + px;
       const worldY = this.slotY(device.slotU) + 1 + portBodyY;
 
+      // Port hit zone — placed at scene root (not in container) for reliable input
+      const zoneSize = portHitRadius * 2;
       const portZone = this.add
-        .zone(worldX, worldY, portHitRadius * 2, portHitRadius * 2)
-        .setDepth(DEPTH.HIT_TARGETS + 1)
+        .zone(worldX, worldY, zoneSize, zoneSize)
+        .setDepth(DEPTH.DRAG_OVERLAY)
         .setInteractive({ useHandCursor: true });
 
-      portZone.on("pointerdown", (pointer: Phaser.Input.Pointer) => {
-        if (!pointer.leftButtonDown()) return;
-        this.blockPan = true;
-        this.handlePortClick(device, port, i, state);
-      });
 
-      this.hitLayer.add(portZone);
+      // Input is handled via manual hit-testing in the global pointerdown handler.
+      // Zone is kept for cursor styling only.
+
+      // Debug overlay — toggled with F1
+      const dbg = this.add.graphics().setDepth(DEPTH.DRAG_OVERLAY + 1);
+      dbg.lineStyle(0.3, 0xff00ff, 0.6);
+      dbg.strokeRect(worldX - portHitRadius, worldY - portHitRadius, zoneSize, zoneSize);
+      dbg.fillStyle(0xff00ff, 0.8);
+      dbg.fillCircle(worldX, worldY, 0.4);
+      dbg.setVisible(this.showDebugZones);
+
       this.portHitZones.push({
         zone: portZone,
+        debug: dbg,
         deviceId: device.id,
         portIndex: i,
         worldX,
         worldY,
       });
     }
+  }
+
+  /** Find a port hit zone at the given world coordinates */
+  private findPortAtWorld(wx: number, wy: number): PortHitZone | null {
+    for (const phz of this.portHitZones) {
+      const dx = Math.abs(wx - phz.worldX);
+      const dy = Math.abs(wy - phz.worldY);
+      // Use the zone's half-size for hit testing
+      const halfSize = phz.zone.width / 2;
+      if (dx <= halfSize && dy <= halfSize) {
+        return phz;
+      }
+    }
+    return null;
   }
 
   private handlePortClick(
@@ -1408,7 +1469,10 @@ export class RackScene extends Phaser.Scene {
         store.cancelCabling();
         return;
       }
-      if (port.linkId || port.status !== "up") return;
+      if (port.linkId) {
+        console.warn(`[cable] target port ${device.id}:p${portIndex} already connected`);
+        return;
+      }
 
       rpcClient
         .call("connectPorts", {
@@ -1420,11 +1484,35 @@ export class RackScene extends Phaser.Scene {
           deviceIdB: device.id,
           portIndexB: portIndex,
         } as never)
-        .catch(() => {});
+        .then(() => {
+          console.log(`[cable] connected ${source.deviceId}:p${source.portIndex} → ${device.id}:p${portIndex}`);
+        })
+        .catch((err: unknown) => {
+          console.error("[cable] connectPorts failed:", err);
+        });
 
       store.cancelCabling();
     } else if (port.linkId) {
-      store.selectDevice(device.id);
+      // Unplug this end — disconnect the link and start cabling from the other end
+      const state = useGameStore.getState().state;
+      const link = state?.links[port.linkId];
+      if (link) {
+        // Find the other end of the cable
+        const isPortA =
+          link.portA.deviceId === device.id && link.portA.portIndex === portIndex;
+        const otherEnd = isPortA ? link.portB : link.portA;
+
+        rpcClient
+          .call("disconnectPorts", { linkId: port.linkId } as never)
+          .then(() => {
+            // Start cabling from the other end so the user can re-route
+            store.startCabling({
+              deviceId: otherEnd.deviceId,
+              portIndex: otherEnd.portIndex,
+            });
+          })
+          .catch(() => {});
+      }
     } else if (port.status === "up") {
       store.startCabling({ deviceId: device.id, portIndex });
     } else if (port.status === "down") {
@@ -1449,24 +1537,15 @@ export class RackScene extends Phaser.Scene {
     const sourcePos = this.getPortWorldPos(device, store.cablingFrom.portIndex);
     if (!sourcePos) return;
 
-    this.previewGraphics.lineStyle(2, PALETTE.highlight, 0.5);
-
-    const midX = Math.min(
-      this.rl.x + this.rl.imgW + 20 + Math.abs(sourcePos.y - this.mouseWorldY) * 0.25,
-      this.rl.x + this.rl.imgW + 100,
+    const bayRight = this.rl.x + this.rl.bayLeft + this.rl.bayWidth;
+    drawCablePreview(
+      this.previewGraphics,
+      sourcePos,
+      this.mouseWorldX,
+      this.mouseWorldY,
+      bayRight,
+      this.time.now,
     );
-
-    this.previewGraphics.beginPath();
-    this.previewGraphics.moveTo(sourcePos.x, sourcePos.y);
-    this.previewGraphics.lineTo(midX, sourcePos.y);
-    this.previewGraphics.lineTo(midX, this.mouseWorldY);
-    this.previewGraphics.lineTo(this.mouseWorldX, this.mouseWorldY);
-    this.previewGraphics.strokePath();
-
-    const t = this.time.now * 0.003;
-    const pulseAlpha = 0.4 + Math.sin(t) * 0.3;
-    this.previewGraphics.fillStyle(PALETTE.highlight, pulseAlpha);
-    this.previewGraphics.fillCircle(sourcePos.x, sourcePos.y, 3);
   }
 
   // ── Cable rendering ───────────────────────────────────────
@@ -1514,9 +1593,9 @@ export class RackScene extends Phaser.Scene {
         ? link.currentLoadMbps / link.maxBandwidthMbps
         : 0;
 
-    const style = getCableStyle(utilization, link.status, isHighlighted, this.time.now);
-    const exitX = getCableExitX(this.rl.x + this.rl.imgW, posA.y, posB.y);
-    drawCablePath(this.cableGraphics, posA, posB, exitX, style);
+    const bayRight = this.rl.x + this.rl.bayLeft + this.rl.bayWidth;
+    const style = getCableStyle(utilization, link.status, isHighlighted, this.time.now, link.type);
+    drawCablePath(this.cableGraphics, posA, posB, bayRight, style);
   }
 
   private getPortWorldPos(

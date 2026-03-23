@@ -5,7 +5,8 @@
   "portLayout": {
     "startX": 0.174,
     "startY": 0.5,
-    "maxVisible": 24
+    "maxVisible": 24,
+    "portHitRadius": 0.3
   },
   "statusLed": {
     "id": "status",
