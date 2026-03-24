@@ -75,6 +75,7 @@ export type Action =
   | { type: "ACCEPT_CLIENT"; clientId: string }
   | { type: "REJECT_CLIENT"; clientId: string }
   | { type: "SET_SPEED"; speed: number }
+  | { type: "SET_BROWSER_ZOOM"; zoomIndex: number }
   | { type: "CONFIGURE_INTERFACE"; deviceId: string; portIndex: number; ip: string | null; mask: number | null; enabled: boolean }
   | { type: "ADD_STATIC_ROUTE"; deviceId: string; destination: string; nextHop: string; metric: number }
   | { type: "REMOVE_ROUTE"; routeId: string }
@@ -176,6 +177,8 @@ export function createInitialState(): GameState {
     world: createInitialWorld(),
 
     ipam: { subnets: {} },
+
+    browserZoomIndex: 2, // 1.0x (index into [0.8, 0.9, 1.0, 1.1, 1.25, 1.5, 1.75, 2.0])
   };
 }
 
@@ -208,6 +211,8 @@ export function applyAction(state: GameState, action: Action): EngineResult {
       return rejectClient(state, action.clientId);
     case "SET_SPEED":
       return setSpeed(state, action.speed);
+    case "SET_BROWSER_ZOOM":
+      return setBrowserZoom(state, action.zoomIndex);
     case "CONFIGURE_INTERFACE":
       return configureInterface(state, action.deviceId, action.portIndex, action.ip, action.mask, action.enabled);
     case "ADD_STATIC_ROUTE":
@@ -921,6 +926,13 @@ function setSpeed(state: GameState, speed: number): EngineResult {
     return { state, error: "Speed must be 0, 1, 2, or 3" };
   }
   return { state: { ...state, speed } };
+}
+
+function setBrowserZoom(state: GameState, zoomIndex: number): EngineResult {
+  if (!Number.isInteger(zoomIndex) || zoomIndex < 0 || zoomIndex > 7) {
+    return { state, error: "Invalid zoom index" };
+  }
+  return { state: { ...state, browserZoomIndex: zoomIndex } };
 }
 
 // --- Device configuration handlers ---

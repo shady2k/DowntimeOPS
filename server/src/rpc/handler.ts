@@ -158,6 +158,12 @@ export function handleRpcRequest(
           speed: (params as Record<string, unknown>).speed as number,
         });
 
+      case "setBrowserZoom":
+        return handleAction(server, id, {
+          type: "SET_BROWSER_ZOOM",
+          zoomIndex: (params as Record<string, unknown>).zoomIndex as number,
+        });
+
       case "pause":
         return handleAction(server, id, { type: "SET_SPEED", speed: 0 });
 

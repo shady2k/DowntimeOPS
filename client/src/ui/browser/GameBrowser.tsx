@@ -1,5 +1,6 @@
 import { useEffect, useCallback } from "react";
 import { useBrowserStore, ZOOM_STEPS } from "./browserStore";
+import { useGameStore } from "../../store/gameStore";
 import { BrowserChrome } from "./BrowserChrome";
 import { PageRouter } from "./PageRouter";
 import { THEME } from "../theme";
@@ -7,7 +8,7 @@ import { THEME } from "../theme";
 export function GameBrowser() {
   const open = useBrowserStore((s) => s.open);
   const closeBrowser = useBrowserStore((s) => s.closeBrowser);
-  const zoomIndex = useBrowserStore((s) => s.zoomIndex);
+  const zoomIndex = useGameStore((s) => s.state?.browserZoomIndex ?? 2);
   const zoomIn = useBrowserStore((s) => s.zoomIn);
   const zoomOut = useBrowserStore((s) => s.zoomOut);
   const zoom = ZOOM_STEPS[zoomIndex];
@@ -28,11 +29,13 @@ export function GameBrowser() {
       }
       if ((e.metaKey || e.ctrlKey) && (e.key === "=" || e.key === "+")) {
         e.preventDefault();
-        zoomIn();
+        const idx = useGameStore.getState().state?.browserZoomIndex ?? 2;
+        zoomIn(idx);
       }
       if ((e.metaKey || e.ctrlKey) && e.key === "-") {
         e.preventDefault();
-        zoomOut();
+        const idx = useGameStore.getState().state?.browserZoomIndex ?? 2;
+        zoomOut(idx);
       }
     };
     window.addEventListener("keydown", handler, true);
@@ -65,8 +68,9 @@ export function GameBrowser() {
       >
         <div
           style={{
-            fontSize: `${zoom * 100}%`,
+            transform: `scale(${zoom})`,
             transformOrigin: "top left",
+            width: `${100 / zoom}%`,
             minHeight: "100%",
           }}
         >

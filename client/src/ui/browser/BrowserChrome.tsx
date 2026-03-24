@@ -2,6 +2,7 @@ import { useState, useCallback } from "react";
 import { useBrowserStore, routeToDisplayUrl, ZOOM_STEPS } from "./browserStore";
 import type { BrowserRoute } from "./browserStore";
 import { rpcClient } from "../../rpc/client";
+import { useGameStore } from "../../store/gameStore";
 import { THEME } from "../theme";
 
 export function BrowserChrome() {
@@ -16,7 +17,7 @@ export function BrowserChrome() {
   const goForward = useBrowserStore((s) => s.goForward);
   const navigate = useBrowserStore((s) => s.navigate);
   const setAddressBarText = useBrowserStore((s) => s.setAddressBarText);
-  const zoomIndex = useBrowserStore((s) => s.zoomIndex);
+  const zoomIndex = useGameStore((s) => s.state?.browserZoomIndex ?? 2);
   const zoomIn = useBrowserStore((s) => s.zoomIn);
   const zoomOut = useBrowserStore((s) => s.zoomOut);
   const resetZoom = useBrowserStore((s) => s.resetZoom);
@@ -179,7 +180,7 @@ export function BrowserChrome() {
 
         {/* Zoom controls */}
         <div style={{ display: "flex", alignItems: "center", gap: 2, marginLeft: 4 }}>
-          <NavButton label="-" disabled={zoomIndex === 0} onClick={zoomOut} />
+          <NavButton label="-" disabled={zoomIndex === 0} onClick={() => zoomOut(zoomIndex)} />
           <span
             onClick={resetZoom}
             style={{
@@ -195,7 +196,7 @@ export function BrowserChrome() {
           >
             {zoomPct}%
           </span>
-          <NavButton label="+" disabled={zoomIndex === ZOOM_STEPS.length - 1} onClick={zoomIn} />
+          <NavButton label="+" disabled={zoomIndex === ZOOM_STEPS.length - 1} onClick={() => zoomIn(zoomIndex)} />
         </div>
       </div>
 

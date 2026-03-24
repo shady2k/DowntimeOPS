@@ -1,4 +1,5 @@
 import { create } from "zustand";
+import { rpcClient } from "../../rpc/client";
 
 // --- Route types ---
 
@@ -49,7 +50,6 @@ interface BrowserStore {
   accessMode: "console" | "network";
   loading: boolean;
   bookmarks: Bookmark[];
-  zoomIndex: number;
 
   // Actions
   openBrowser: (mode: "console" | "network", deviceId?: string) => void;
@@ -59,8 +59,8 @@ interface BrowserStore {
   goForward: () => void;
   setAddressBarText: (text: string) => void;
   setLoading: (loading: boolean) => void;
-  zoomIn: () => void;
-  zoomOut: () => void;
+  zoomIn: (currentIndex: number) => void;
+  zoomOut: (currentIndex: number) => void;
   resetZoom: () => void;
 }
 
@@ -81,7 +81,6 @@ export const useBrowserStore = create<BrowserStore>((set, get) => ({
   accessMode: "network",
   loading: false,
   bookmarks: DEFAULT_BOOKMARKS,
-  zoomIndex: DEFAULT_ZOOM_INDEX,
 
   openBrowser: (mode, deviceId) => {
     const route: BrowserRoute = mode === "console" && deviceId
@@ -139,9 +138,17 @@ export const useBrowserStore = create<BrowserStore>((set, get) => ({
   setAddressBarText: (text) => set({ addressBarText: text }),
   setLoading: (loading) => set({ loading }),
 
-  zoomIn: () => set((s) => ({ zoomIndex: Math.min(s.zoomIndex + 1, ZOOM_STEPS.length - 1) })),
-  zoomOut: () => set((s) => ({ zoomIndex: Math.max(s.zoomIndex - 1, 0) })),
-  resetZoom: () => set({ zoomIndex: DEFAULT_ZOOM_INDEX }),
+  zoomIn: (currentIndex: number) => {
+    const next = Math.min(currentIndex + 1, ZOOM_STEPS.length - 1);
+    if (next !== currentIndex) rpcClient.call("setBrowserZoom", { zoomIndex: next }).catch(() => {});
+  },
+  zoomOut: (currentIndex: number) => {
+    const next = Math.max(currentIndex - 1, 0);
+    if (next !== currentIndex) rpcClient.call("setBrowserZoom", { zoomIndex: next }).catch(() => {});
+  },
+  resetZoom: () => {
+    rpcClient.call("setBrowserZoom", { zoomIndex: DEFAULT_ZOOM_INDEX }).catch(() => {});
+  },
 }));
 
 export { routeToDisplayUrl };

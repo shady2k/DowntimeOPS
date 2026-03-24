@@ -58,6 +58,10 @@ export interface SetSpeedParams {
   speed: number;
 }
 
+export interface SetBrowserZoomParams {
+  zoomIndex: number;
+}
+
 export interface SaveGameParams {
   name: string;
 }
@@ -276,6 +280,7 @@ export interface RpcMethods {
   startTracer: { params: StartTracerParams; result: StartTracerResult };
   stepTracer: { params: StepTracerParams; result: StepTracerResult };
   setSpeed: { params: SetSpeedParams; result: void };
+  setBrowserZoom: { params: SetBrowserZoomParams; result: void };
   pause: { params: void; result: void };
   getSnapshot: { params: void; result: GetSnapshotResult };
   saveGame: { params: SaveGameParams; result: void };

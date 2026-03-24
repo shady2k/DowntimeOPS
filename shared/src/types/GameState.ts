@@ -41,4 +41,6 @@ export interface GameState {
   world: WorldState;
 
   ipam: IpamState;
+
+  browserZoomIndex: number;
 }
