@@ -41,25 +41,30 @@ export function HomePage() {
               background: THEME.colors.bgCard,
               border: `1px solid ${THEME.colors.border}`,
               borderRadius: THEME.radius.md,
-              padding: "12px 20px",
+              padding: "14px 16px",
               color: THEME.colors.text,
               cursor: "pointer",
               fontFamily: THEME.fonts.body,
-              fontSize: 12,
+              fontSize: 11,
               fontWeight: 600,
               minWidth: 80,
               textAlign: "center",
+              display: "flex",
+              flexDirection: "column",
+              alignItems: "center",
+              gap: 4,
             }}
             onMouseEnter={(e) => {
-              (e.target as HTMLElement).style.background = THEME.colors.bgCardHover;
-              (e.target as HTMLElement).style.borderColor = THEME.colors.accent;
+              (e.currentTarget as HTMLElement).style.background = THEME.colors.bgCardHover;
+              (e.currentTarget as HTMLElement).style.borderColor = THEME.colors.accent;
             }}
             onMouseLeave={(e) => {
-              (e.target as HTMLElement).style.background = THEME.colors.bgCard;
-              (e.target as HTMLElement).style.borderColor = THEME.colors.border;
+              (e.currentTarget as HTMLElement).style.background = THEME.colors.bgCard;
+              (e.currentTarget as HTMLElement).style.borderColor = THEME.colors.border;
             }}
           >
-            {bm.label}
+            <span style={{ fontSize: 20 }}>{bm.icon}</span>
+            <span>{bm.label}</span>
           </button>
         ))}
       </div>

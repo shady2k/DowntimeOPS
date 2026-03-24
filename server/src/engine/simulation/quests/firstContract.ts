@@ -1,11 +1,24 @@
-import type { GameState, QuestState, QuestStep } from "@downtime-ops/shared";
+import type { GameState, QuestStep } from "@downtime-ops/shared";
+import { NETWORK_FUNDAMENTALS_STEPS } from "./networkFundamentals";
 
-const FIRST_CONTRACT_STEPS: Array<Omit<QuestStep, "completed" | "completedAtTick">> = [
+export const FIRST_CONTRACT_STEPS: Array<Omit<QuestStep, "completed" | "completedAtTick">> = [
+  {
+    id: "open_quests",
+    title: "Check Your Quest Board",
+    description: "Walk to the staff computer in the datacenter and interact with it to open the browser. Click the Quests bookmark to see your available tasks.",
+    hint: "Staff Computer → Browser → Quests",
+  },
+  {
+    id: "accept_contract",
+    title: "Accept PicoApp's Contract",
+    description: "Go to the Contracts page and accept PicoApp's hosting contract. This commits you to building the infrastructure they need. Review the deal: 10 Mbps, $150/mo.",
+    hint: "Browser → Contracts → Accept",
+  },
   {
     id: "buy_rack",
     title: "Order a Server Rack",
-    description: "Walk to the staff computer in the datacenter and interact with it to open the browser. Click the Shop bookmark and purchase a 42U server rack. It will be delivered to the storage room.",
-    hint: "Staff Computer → Shop",
+    description: "Open the Shop and purchase a 42U server rack. It will be delivered to the storage room.",
+    hint: "Browser → Shop",
   },
   {
     id: "place_rack",
@@ -62,10 +75,10 @@ const FIRST_CONTRACT_STEPS: Array<Omit<QuestStep, "completed" | "completedAtTick
     hint: "Click switch port → click server port",
   },
   {
-    id: "accept_contract",
-    title: "Accept PicoApp's Contract",
-    description: "Walk to the staff computer and open the browser. Click the Clients bookmark to see waiting prospects. PicoApp is your first client — review their contract (10 Mbps, $150/mo) and click Accept Contract to start serving them.",
-    hint: "Staff Computer → Browser → Clients",
+    id: "verify_connectivity",
+    title: "Verify Network Connectivity",
+    description: "Your network is now complete. Check the Contracts page — PicoApp's connections should show as active. If not, check your cables and device status.",
+    hint: "Browser → Contracts — check status",
   },
   {
     id: "first_revenue",
@@ -75,35 +88,8 @@ const FIRST_CONTRACT_STEPS: Array<Omit<QuestStep, "completed" | "completedAtTick
   },
 ];
 
-export function createInitialQuests(): QuestState {
-  return {
-    quests: {
-      first_contract: {
-        id: "first_contract",
-        title: "First Contract: PicoApp Hosting",
-        description: "PicoApp, a two-person startup building a recipe app, needs hosting for their web service. Set up your datacenter infrastructure — rack, router, switch, server — cable it all together, and get them online.",
-        giver: "PicoApp",
-        status: "active",
-        steps: FIRST_CONTRACT_STEPS.map((def) => ({
-          ...def,
-          completed: false,
-          completedAtTick: null,
-        })),
-        currentStepIndex: 0,
-      },
-    },
-    activeQuestId: "first_contract",
-    tutorialComplete: false,
-    networkReady: false,
-    firstClientActivated: false,
-    firstRevenueEarned: false,
-  };
-}
-
-export function evaluateQuests(state: GameState): GameState {
+export function evaluateFirstContract(state: GameState): GameState {
   const qs = state.quests;
-  if (qs.tutorialComplete) return state;
-
   const quest = qs.quests.first_contract;
   if (!quest || quest.status === "completed") return state;
 
@@ -123,36 +109,40 @@ export function evaluateQuests(state: GameState): GameState {
   const links = Object.values(state.links);
   const clients = Object.values(state.clients);
   const items = Object.values(state.world.items);
+  const connections = Object.values(state.connections);
+
+  // --- Browser / quest steps ---
+
+  if (qs.visitedPages.includes("quests")) complete("open_quests");
+
+  const hasAcceptedClient = clients.some(
+    (c) => c.status === "provisioning" || c.status === "active" || c.status === "warning",
+  );
+  if (hasAcceptedClient) complete("accept_contract");
 
   // --- World / shop steps ---
 
-  // Buy rack: any rack item exists
   const hasRackItem = items.some((i) => i.kind === "rack");
   if (hasRackItem) complete("buy_rack");
 
-  // Place rack: any rack is placed on the floor
   const hasPlacedRack = items.some((i) => i.kind === "rack" && i.state === "placed");
   if (hasPlacedRack) complete("place_rack");
 
-  // Buy equipment: player has bought at least one of each device type
   const boughtModels = new Set(items.filter((i) => i.kind === "device").map((i) => i.model));
   const hasRouter = boughtModels.has("router_1u") || devices.some((d) => d.type === "router");
   const hasSwitch = boughtModels.has("switch_24p") || devices.some((d) => d.type === "switch");
   const hasServer = boughtModels.has("server_1u") || devices.some((d) => d.type === "server");
   if (hasRouter && hasSwitch && hasServer) complete("buy_equipment");
 
-  // Install devices: check simulation-layer devices (exclude ISP demarc)
   if (devices.some((d) => d.type === "router" && d.id !== "device-isp-demarc")) complete("install_router");
   if (devices.some((d) => d.type === "switch")) complete("install_switch");
   if (devices.some((d) => d.type === "server")) complete("install_server");
 
-  // Connect uplink: any uplink pointing to a router (not the demarc itself)
   const uplinkConnected = state.uplinks.some(
     (u) => u.deviceId !== "" && u.deviceId !== "device-isp-demarc",
   );
   if (uplinkConnected) complete("connect_uplink");
 
-  // Buy cables: any cable stock > 0
   const cs = state.world.cableStock;
   if (cs.cat6 > 0 || cs.cat6a > 0 || cs.om3_fiber > 0 || cs.os2_fiber > 0) {
     complete("buy_cables");
@@ -182,12 +172,18 @@ export function evaluateQuests(state: GameState): GameState {
   });
   if (hasSwitchServerLink) complete("cable_switch_server");
 
-  // --- Client / revenue steps ---
+  // --- Connectivity / revenue steps ---
 
   const hasActiveClient = clients.some(
     (c) => c.status === "active" || c.status === "warning",
   );
-  if (hasActiveClient) complete("accept_contract");
+  if (hasActiveClient) {
+    const clientConns = connections.filter(
+      (c) => clients.some((cl) => cl.id === c.clientId && (cl.status === "active" || cl.status === "warning")),
+    );
+    const allActive = clientConns.length > 0 && clientConns.every((c) => c.status === "active");
+    if (allActive) complete("verify_connectivity");
+  }
 
   let firstRevenueEarned = qs.firstRevenueEarned;
   if (!firstRevenueEarned && state.monthlyRevenue > 0) {
@@ -218,19 +214,46 @@ export function evaluateQuests(state: GameState): GameState {
   const currentStepIndex = steps.findIndex((s) => !s.completed);
   const allComplete = steps.every((s) => s.completed);
 
+  // When first_contract completes, activate network_fundamentals
+  let updatedQuests = {
+    ...qs.quests,
+    first_contract: {
+      ...quest,
+      steps,
+      currentStepIndex: currentStepIndex === -1 ? steps.length - 1 : currentStepIndex,
+      status: allComplete ? "completed" as const : "active" as const,
+    },
+  };
+
+  let activeQuestId = qs.activeQuestId;
+  if (allComplete && !qs.quests.network_fundamentals) {
+    updatedQuests = {
+      ...updatedQuests,
+      network_fundamentals: {
+        id: "network_fundamentals",
+        title: "Network Fundamentals",
+        description: "Your datacenter is running, but the network was auto-configured. Time to learn how IP addressing really works. Reconfigure your devices with proper subnets and verify everything in IPAM.",
+        giver: "System",
+        status: "active",
+        steps: NETWORK_FUNDAMENTALS_STEPS.map((def) => ({
+          ...def,
+          completed: false,
+          completedAtTick: null,
+        })),
+        currentStepIndex: 0,
+      },
+    };
+    activeQuestId = "network_fundamentals";
+  } else if (allComplete && qs.activeQuestId === "first_contract") {
+    activeQuestId = "network_fundamentals";
+  }
+
   return {
     ...state,
     quests: {
       ...qs,
-      quests: {
-        ...qs.quests,
-        first_contract: {
-          ...quest,
-          steps,
-          currentStepIndex: currentStepIndex === -1 ? steps.length - 1 : currentStepIndex,
-          status: allComplete ? "completed" : "active",
-        },
-      },
+      quests: updatedQuests,
+      activeQuestId,
       tutorialComplete: allComplete,
       networkReady,
       firstClientActivated,

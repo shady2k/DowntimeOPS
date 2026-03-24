@@ -7,6 +7,8 @@ import { GameBrowser } from "./ui/browser/GameBrowser";
 import { InventoryHUD } from "./ui/hud/InventoryHUD";
 import { MainMenu } from "./ui/MainMenu";
 import { QuestDetailOverlay } from "./ui/quests/QuestDetailOverlay";
+import { QuestCompleteOverlay } from "./ui/overlays/QuestCompleteOverlay";
+import { MilestoneUnlockOverlay } from "./ui/overlays/MilestoneUnlockOverlay";
 import { THEME } from "./ui/theme";
 
 function App() {
@@ -88,6 +90,8 @@ function App() {
       <InventoryHUD />
       <GameBrowser />
       <QuestDetailOverlay />
+      <QuestCompleteOverlay />
+      <MilestoneUnlockOverlay />
       {pauseMenuOpen && <MainMenu />}
     </div>
   );

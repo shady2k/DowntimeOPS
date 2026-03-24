@@ -1,4 +1,4 @@
-export type QuestId = "first_contract";
+export type QuestId = "first_contract" | "network_fundamentals";
 export type QuestStatus = "active" | "completed";
 
 export interface QuestStep {
@@ -21,10 +21,11 @@ export interface Quest {
 }
 
 export interface QuestState {
-  quests: Record<QuestId, Quest>;
+  quests: Partial<Record<QuestId, Quest>>;
   activeQuestId: QuestId | null;
   tutorialComplete: boolean;
   networkReady: boolean;
   firstClientActivated: boolean;
   firstRevenueEarned: boolean;
+  visitedPages: string[];
 }

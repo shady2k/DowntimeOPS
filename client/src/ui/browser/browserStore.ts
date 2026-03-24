@@ -9,11 +9,14 @@ export type BrowserRoute =
   | { type: "device"; ip: string; deviceId: string; subpage?: string }
   | { type: "shop" }
   | { type: "clients" }
+  | { type: "quests" }
+  | { type: "achievements" }
   | { type: "ipam"; subpage?: string }
   | { type: "docs"; article?: string }
   | { type: "error"; code: "not_found" | "unreachable" | "no_ip"; message: string };
 
 export interface Bookmark {
+  icon: string;
   label: string;
   route: BrowserRoute;
 }
@@ -30,6 +33,10 @@ function routeToDisplayUrl(route: BrowserRoute): string {
       return "https://datacenter-supply.net/shop";
     case "clients":
       return "clients://contracts";
+    case "quests":
+      return "quests://board";
+    case "achievements":
+      return "achievements://";
     case "ipam":
       return `ipam://${route.subpage || ""}`;
     case "docs":
@@ -70,10 +77,12 @@ interface BrowserStore {
 export { ZOOM_STEPS };
 
 const DEFAULT_BOOKMARKS: Bookmark[] = [
-  { label: "Shop", route: { type: "shop" } },
-  { label: "Clients", route: { type: "clients" } },
-  { label: "IPAM", route: { type: "ipam" } },
-  { label: "Docs", route: { type: "docs" } },
+  { icon: "\u{1F6D2}", label: "Shop", route: { type: "shop" } },
+  { icon: "\u{1F4CB}", label: "Contracts", route: { type: "clients" } },
+  { icon: "\u26A1", label: "Quests", route: { type: "quests" } },
+  { icon: "\u{1F3C6}", label: "Achievements", route: { type: "achievements" } },
+  { icon: "\u{1F5FA}\uFE0F", label: "IPAM", route: { type: "ipam" } },
+  { icon: "\u{1F4D6}", label: "Docs", route: { type: "docs" } },
 ];
 
 export const useBrowserStore = create<BrowserStore>((set, get) => ({

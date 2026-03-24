@@ -91,6 +91,7 @@ export type Action =
   | { type: "ALLOCATE_IP"; subnetId: string; ip: string; deviceId: string | null; description: string }
   | { type: "RELEASE_IP"; subnetId: string; ip: string }
   | { type: "CONNECT_UPLINK"; deviceId: string; portIndex: number }
+  | { type: "REPORT_PAGE_VISIT"; page: string }
   | { type: "TICK" }
   | WorldAction;
 
@@ -214,6 +215,8 @@ export function applyAction(state: GameState, action: Action): EngineResult {
       return setSpeed(state, action.speed);
     case "SET_BROWSER_ZOOM":
       return setBrowserZoom(state, action.zoomIndex);
+    case "REPORT_PAGE_VISIT":
+      return reportPageVisit(state, action.page);
     case "CONFIGURE_INTERFACE":
       return configureInterface(state, action.deviceId, action.portIndex, action.ip, action.mask, action.enabled);
     case "ADD_STATIC_ROUTE":
@@ -946,41 +949,51 @@ function acceptClient(state: GameState, clientId: string): EngineResult {
     return { state, error: "Client is not a prospect" };
   }
 
-  // Require an active uplink connected to a router
-  const hasActiveUplink = state.uplinks.some(
-    (u) => u.status === "active" && u.deviceId !== "" && u.deviceId !== "device-isp-demarc",
-  );
-  if (!hasActiveUplink) {
-    return { state, error: "No active internet uplink connected. Connect the ISP cable to your router's WAN port first." };
-  }
-
+  // Accept into "provisioning" — connections will be created once infrastructure is ready
   let newState: GameState = {
     ...state,
     clients: {
       ...state.clients,
-      [clientId]: { ...client, status: "active", satisfaction: 100 },
+      [clientId]: { ...client, status: "provisioning", satisfaction: 100, prospectTick: null },
     },
     log: [
       ...state.log,
       {
         id: genId("log"),
         tick: state.tick,
-        message: `Accepted client: ${client.name} (${client.contract.bandwidthMbps} Mbps, $${client.contract.monthlyRevenue}/mo)`,
+        message: `Accepted contract: ${client.name} (${client.contract.bandwidthMbps} Mbps, $${client.contract.monthlyRevenue}/mo) — awaiting infrastructure`,
         category: "client",
       },
     ],
   };
 
-  // Create connections for the client
+  // Try to create connections immediately (will succeed if infrastructure exists)
   const numConnections = Math.max(
     1,
     Math.ceil(client.contract.bandwidthMbps / BALANCE.BANDWIDTH_PER_CONNECTION),
   );
   const bwPerConn = client.contract.bandwidthMbps / numConnections;
 
+  let allCreated = true;
   for (let i = 0; i < numConnections; i++) {
     const result = createConnection(newState, clientId, bwPerConn);
-    newState = result.state;
+    if (result.connectionId) {
+      newState = result.state;
+    } else {
+      allCreated = false;
+      break;
+    }
+  }
+
+  // If all connections were created, go straight to active
+  if (allCreated) {
+    newState = {
+      ...newState,
+      clients: {
+        ...newState.clients,
+        [clientId]: { ...newState.clients[clientId], status: "active" },
+      },
+    };
   }
 
   return { state: newState };
@@ -1025,6 +1038,21 @@ function setBrowserZoom(state: GameState, zoomIndex: number): EngineResult {
     return { state, error: "Invalid zoom index" };
   }
   return { state: { ...state, browserZoomIndex: zoomIndex } };
+}
+
+function reportPageVisit(state: GameState, page: string): EngineResult {
+  if (state.quests.visitedPages.includes(page)) {
+    return { state }; // idempotent
+  }
+  return {
+    state: {
+      ...state,
+      quests: {
+        ...state.quests,
+        visitedPages: [...state.quests.visitedPages, page],
+      },
+    },
+  };
 }
 
 // --- Device configuration handlers ---

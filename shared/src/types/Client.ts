@@ -14,7 +14,7 @@ export interface Client {
   type: "startup" | "smb" | "enterprise" | "bank";
   contract: Contract;
   satisfaction: number;
-  status: "prospect" | "active" | "warning" | "churned";
+  status: "prospect" | "provisioning" | "active" | "warning" | "churned";
   flavor: string;
   prospectTick: number | null; // tick when this client became a prospect (for expiry display)
 }

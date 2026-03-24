@@ -4,15 +4,16 @@ import { THEME } from "../theme";
 /**
  * Quest spotlight overlay. Shows contextual callouts based on current
  * quest step — points the player to the right part of the UI.
+ * Works for both the first_contract and network_fundamentals quests.
  */
 export function TutorialOverlay() {
   const quests = useGameStore((s) => s.state?.quests);
   const cablingFrom = useGameStore((s) => s.cablingFrom);
   const placingModel = useGameStore((s) => s.placingModel);
 
-  if (!quests || quests.tutorialComplete) return null;
+  if (!quests || !quests.activeQuestId) return null;
 
-  const quest = quests.quests.first_contract;
+  const quest = quests.quests[quests.activeQuestId];
   if (!quest || quest.status === "completed") return null;
 
   const currentStep = quest.steps[quest.currentStepIndex];
@@ -23,6 +24,33 @@ export function TutorialOverlay() {
     null;
 
   switch (currentStep.id) {
+    // --- First Contract quest ---
+    case "open_quests":
+      callout = {
+        message: "Open the browser and click the Quests bookmark",
+        position: "sidebar",
+      };
+      break;
+    case "accept_contract":
+      callout = {
+        message: "Open the Contracts page and accept PicoApp's contract",
+        position: "sidebar",
+      };
+      break;
+    case "buy_rack":
+    case "buy_equipment":
+    case "buy_cables":
+      callout = {
+        message: "Open the browser and go to the Shop",
+        position: "sidebar",
+      };
+      break;
+    case "place_rack":
+      callout = {
+        message: "Pick up the rack from storage and drop it on an orange zone",
+        position: "top",
+      };
+      break;
     case "install_router":
     case "install_switch":
     case "install_server":
@@ -53,9 +81,9 @@ export function TutorialOverlay() {
         };
       }
       break;
-    case "accept_contract":
+    case "verify_connectivity":
       callout = {
-        message: "Use the staff computer and open the Clients page to accept PicoApp's contract",
+        message: "Check the Contracts page — PicoApp should show active connections",
         position: "sidebar",
       };
       break;
@@ -65,6 +93,39 @@ export function TutorialOverlay() {
         position: "top",
       };
       break;
+
+    // --- Network Fundamentals quest ---
+    case "nf_open_console":
+      callout = {
+        message: "In the rack view, click a device's console icon to open its management page",
+        position: "rack",
+      };
+      break;
+    case "nf_configure_router_lan":
+      callout = {
+        message: "Set a LAN interface IP on the router (e.g. 10.0.1.1/24)",
+        position: "sidebar",
+      };
+      break;
+    case "nf_configure_server":
+      callout = {
+        message: "Set the server's IP to match the router's subnet (e.g. 10.0.1.10/24, gateway 10.0.1.1)",
+        position: "sidebar",
+      };
+      break;
+    case "nf_check_ipam":
+      callout = {
+        message: "Open the IPAM page to see your auto-discovered network",
+        position: "sidebar",
+      };
+      break;
+    case "nf_accept_second_client":
+      callout = {
+        message: "Accept a new client from the Contracts page",
+        position: "sidebar",
+      };
+      break;
+
     default:
       break;
   }

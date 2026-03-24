@@ -382,3 +382,41 @@ export function reestablishConnections(state: GameState): GameState {
 
   return newState;
 }
+
+/** Try to provision clients that have accepted contracts but have no connections yet */
+export function provisionClients(state: GameState): GameState {
+  let newState = state;
+
+  for (const client of Object.values(state.clients)) {
+    if (client.status !== "provisioning") continue;
+
+    const numConnections = Math.max(
+      1,
+      Math.ceil(client.contract.bandwidthMbps / BALANCE.BANDWIDTH_PER_CONNECTION),
+    );
+    const bwPerConn = client.contract.bandwidthMbps / numConnections;
+
+    let allCreated = true;
+    for (let i = 0; i < numConnections; i++) {
+      const result = createConnection(newState, client.id, bwPerConn);
+      if (result.connectionId) {
+        newState = result.state;
+      } else {
+        allCreated = false;
+        break;
+      }
+    }
+
+    if (allCreated) {
+      newState = {
+        ...newState,
+        clients: {
+          ...newState.clients,
+          [client.id]: { ...newState.clients[client.id], status: "active" },
+        },
+      };
+    }
+  }
+
+  return newState;
+}

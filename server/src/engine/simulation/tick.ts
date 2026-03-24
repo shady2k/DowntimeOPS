@@ -5,6 +5,7 @@ import {
   updateConnectionHealth,
   updateLinkUtilization,
   reestablishConnections,
+  provisionClients,
 } from "./connectionEngine";
 import { processEconomyTick } from "./economy";
 import { checkSla } from "./sla";
@@ -23,6 +24,9 @@ export function processTick(state: GameState): GameState {
 
   // Try to re-establish terminated connections
   next = reestablishConnections(next);
+
+  // Try to provision clients awaiting infrastructure
+  next = provisionClients(next);
 
   // Recalculate link utilization
   next = updateLinkUtilization(next);

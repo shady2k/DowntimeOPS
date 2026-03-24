@@ -27,6 +27,7 @@ export function ClientPanel() {
 
   const clients = Object.values(state.clients);
   const prospects = clients.filter((c) => c.status === "prospect");
+  const provisioning = clients.filter((c) => c.status === "provisioning");
   const active = clients.filter(
     (c) => c.status === "active" || c.status === "warning",
   );
@@ -39,7 +40,7 @@ export function ClientPanel() {
   return (
     <div style={{ padding: 12, fontFamily: THEME.fonts.body }}>
       <h3 style={headingStyle()}>
-        CLIENTS
+        CONTRACTS
       </h3>
 
       {/* Revenue summary */}
@@ -238,6 +239,64 @@ export function ClientPanel() {
                   >
                     Decline
                   </button>
+                </div>
+              </div>
+            );
+          })}
+        </>
+      )}
+
+      {/* Provisioning */}
+      {provisioning.length > 0 && (
+        <>
+          <h4
+            style={{
+              margin: "12px 0 4px",
+              fontSize: 11,
+              color: THEME.colors.info,
+              fontFamily: THEME.fonts.heading,
+              display: "flex",
+              alignItems: "center",
+              gap: 6,
+            }}
+          >
+            Provisioning ({provisioning.length})
+          </h4>
+          {provisioning.map((client) => {
+            const badge = clientTypeBadge(client.type);
+            return (
+              <div
+                key={client.id}
+                style={{
+                  ...cardStyle(THEME.colors.info),
+                  marginBottom: 4,
+                  fontSize: 10,
+                }}
+              >
+                <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 2 }}>
+                  <span style={{ fontWeight: "bold", fontSize: 11, color: THEME.colors.text }}>
+                    {client.name}
+                  </span>
+                  <span
+                    style={{
+                      fontSize: 8,
+                      padding: "1px 4px",
+                      background: badge.color,
+                      color: THEME.colors.textInverse,
+                      borderRadius: THEME.radius.sm,
+                    }}
+                  >
+                    {badge.label}
+                  </span>
+                  <span style={{ fontSize: 9, color: THEME.colors.info, marginLeft: "auto" }}>
+                    AWAITING INFRASTRUCTURE
+                  </span>
+                </div>
+                <div style={{ color: THEME.colors.textMuted }}>
+                  ${client.contract.monthlyRevenue}/mo | {client.contract.bandwidthMbps} Mbps
+                </div>
+                <div style={{ fontSize: 9, color: THEME.colors.textDim, marginTop: 2 }}>
+                  Build your network to bring this client online.
                 </div>
               </div>
             );

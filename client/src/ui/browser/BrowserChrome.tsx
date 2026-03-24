@@ -234,7 +234,7 @@ export function BrowserChrome() {
               (e.target as HTMLElement).style.color = THEME.colors.textMuted;
             }}
           >
-            {bm.label}
+            {bm.icon} {bm.label}
           </button>
         ))}
       </div>
@@ -294,7 +294,11 @@ function getRouteTitle(route: BrowserRoute, _accessMode: string): string {
     case "shop":
       return "DataCenter Supply Co.";
     case "clients":
-      return "Clients & Contracts";
+      return "Contracts";
+    case "quests":
+      return "Quests";
+    case "achievements":
+      return "Achievements";
     case "ipam":
       return "IPAM";
     case "docs":
@@ -309,6 +313,9 @@ function parseAddressBarInput(text: string): BrowserRoute | null {
   if (text === "about://home" || text === "") return { type: "home" };
   if (text.startsWith("docs://")) return { type: "docs", article: text.slice(7) || undefined };
   if (text.startsWith("ipam://")) return { type: "ipam", subpage: text.slice(7) || undefined };
+  if (text.startsWith("quests://")) return { type: "quests" };
+  if (text.startsWith("achievements://")) return { type: "achievements" };
+  if (text.startsWith("clients://")) return { type: "clients" };
 
   // Shop URLs
   if (text.includes("datacenter-supply.net")) return { type: "shop" };

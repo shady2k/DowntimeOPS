@@ -215,6 +215,12 @@ export interface ResolveBrowserTargetResult {
   reason: "ok" | "no_device";
 }
 
+// --- Quest tracking params ---
+
+export interface ReportPageVisitParams {
+  page: string;
+}
+
 // --- Phase 3: IPAM params ---
 
 export interface CreateSubnetParams {
@@ -325,6 +331,9 @@ export interface RpcMethods {
 
   // Browser target resolution
   resolveBrowserTarget: { params: ResolveBrowserTargetParams; result: ResolveBrowserTargetResult };
+
+  // Quest tracking
+  reportPageVisit: { params: ReportPageVisitParams; result: void };
 
   // IPAM
   createSubnet: { params: CreateSubnetParams; result: CreateSubnetResult };

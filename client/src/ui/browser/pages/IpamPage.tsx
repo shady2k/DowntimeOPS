@@ -1,66 +1,157 @@
-import { useState } from "react";
+import { useEffect } from "react";
 import { useGameStore } from "../../../store/gameStore";
 import { rpcClient } from "../../../rpc/client";
 import { useBrowserStore } from "../browserStore";
-import { hostCount } from "@downtime-ops/shared";
+import { networkAddress, hostCount } from "@downtime-ops/shared";
+import type { GameState, InterfaceConfig } from "@downtime-ops/shared";
 import { THEME } from "../../theme";
 
 interface IpamPageProps {
   subpage?: string;
 }
 
-export function IpamPage({ subpage }: IpamPageProps) {
-  const state = useGameStore((s) => s.state);
-  if (!state) return null;
+// --- Auto-discovery types ---
 
-  // If subpage is a subnet ID, show detail view
-  if (subpage && state.ipam.subnets[subpage]) {
-    return <SubnetDetail subnetId={subpage} />;
+interface DiscoveredAllocation {
+  ip: string;
+  mask: number;
+  deviceId: string;
+  deviceName: string;
+  deviceType: string;
+  portDescription: string;
+  conflict: boolean;
+}
+
+interface DiscoveredSubnet {
+  networkKey: string;
+  network: string;
+  mask: number;
+  gateway: string | null;
+  allocations: DiscoveredAllocation[];
+}
+
+// --- Auto-discovery logic ---
+
+function discoverSubnets(state: GameState): DiscoveredSubnet[] {
+  const rawAllocations: Array<Omit<DiscoveredAllocation, "conflict">> = [];
+
+  for (const device of Object.values(state.devices)) {
+    if (device.type === "router" || device.type === "firewall") {
+      const cfg = device.config as { interfaces: Record<number, InterfaceConfig> };
+      for (const [portIdx, iface] of Object.entries(cfg.interfaces)) {
+        if (iface.ip && iface.mask !== null) {
+          const portLabel = device.type === "router"
+            ? (Number(portIdx) === 0 ? "WAN" : `LAN ${portIdx}`)
+            : `eth${portIdx}`;
+          rawAllocations.push({
+            ip: iface.ip,
+            mask: iface.mask,
+            deviceId: device.id,
+            deviceName: device.name,
+            deviceType: device.type,
+            portDescription: iface.description || portLabel,
+          });
+        }
+      }
+    } else if (device.type === "server") {
+      const cfg = device.config as { ip: string | null; mask: number | null };
+      if (cfg.ip && cfg.mask !== null) {
+        rawAllocations.push({
+          ip: cfg.ip,
+          mask: cfg.mask,
+          deviceId: device.id,
+          deviceName: device.name,
+          deviceType: device.type,
+          portDescription: "eth0",
+        });
+      }
+    } else if (device.type === "switch") {
+      const cfg = device.config as { managementIp: string | null; managementMask: number | null };
+      if (cfg.managementIp && cfg.managementMask !== null) {
+        rawAllocations.push({
+          ip: cfg.managementIp,
+          mask: cfg.managementMask,
+          deviceId: device.id,
+          deviceName: device.name,
+          deviceType: device.type,
+          portDescription: "mgmt",
+        });
+      }
+    }
   }
 
-  return <SubnetOverview />;
+  // Group by network address
+  const subnetMap = new Map<string, DiscoveredAllocation[]>();
+
+  for (const alloc of rawAllocations) {
+    const net = networkAddress(alloc.ip, alloc.mask);
+    const key = `${net}/${alloc.mask}`;
+
+    if (!subnetMap.has(key)) subnetMap.set(key, []);
+    subnetMap.get(key)!.push({ ...alloc, conflict: false });
+  }
+
+  // Detect IP conflicts within each subnet
+  for (const allocations of subnetMap.values()) {
+    const ipCounts = new Map<string, number>();
+    for (const a of allocations) {
+      ipCounts.set(a.ip, (ipCounts.get(a.ip) || 0) + 1);
+    }
+    for (const a of allocations) {
+      if ((ipCounts.get(a.ip) || 0) > 1) {
+        a.conflict = true;
+      }
+    }
+  }
+
+  // Build result
+  const subnets: DiscoveredSubnet[] = [];
+  for (const [key, allocations] of subnetMap) {
+    const [net, maskStr] = key.split("/");
+    const mask = Number(maskStr);
+
+    // Gateway = router interface in this subnet
+    const routerAlloc = allocations.find((a) => a.deviceType === "router" || a.deviceType === "firewall");
+
+    subnets.push({
+      networkKey: key.replace("/", "-"),
+      network: net,
+      mask,
+      gateway: routerAlloc?.ip ?? null,
+      allocations: allocations.sort((a, b) => ipSortKey(a.ip) - ipSortKey(b.ip)),
+    });
+  }
+
+  return subnets.sort((a, b) => ipSortKey(a.network) - ipSortKey(b.network));
+}
+
+// --- Page component ---
+
+export function IpamPage({ subpage }: IpamPageProps) {
+  const state = useGameStore((s) => s.state);
+
+  useEffect(() => {
+    rpcClient.call("reportPageVisit", { page: "ipam" }).catch(() => {});
+  }, []);
+
+  if (!state) return null;
+
+  const subnets = discoverSubnets(state);
+
+  if (subpage) {
+    const subnet = subnets.find((s) => s.networkKey === subpage);
+    if (subnet) return <SubnetDetail subnet={subnet} />;
+  }
+
+  return <SubnetOverview subnets={subnets} />;
 }
 
 // --- Overview ---
 
-function SubnetOverview() {
-  const state = useGameStore((s) => s.state);
+function SubnetOverview({ subnets }: { subnets: DiscoveredSubnet[] }) {
   const navigate = useBrowserStore((s) => s.navigate);
-  const subnets = state ? Object.values(state.ipam.subnets) : [];
 
-  const [network, setNetwork] = useState("");
-  const [mask, setMask] = useState("24");
-  const [name, setName] = useState("");
-  const [vlanId, setVlanId] = useState<string>("");
-  const [error, setError] = useState<string | null>(null);
-
-  const handleCreate = async () => {
-    setError(null);
-    try {
-      await rpcClient.call("createSubnet", {
-        network,
-        mask: Number(mask),
-        name,
-        vlanId: vlanId ? Number(vlanId) : undefined,
-      });
-      setNetwork("");
-      setMask("24");
-      setName("");
-      setVlanId("");
-    } catch (e) {
-      setError((e as Error).message);
-    }
-  };
-
-  const handleDelete = async (subnetId: string) => {
-    try {
-      await rpcClient.call("deleteSubnet", { subnetId });
-    } catch (e) {
-      setError((e as Error).message);
-    }
-  };
-
-  const vlans = state ? Object.values(state.vlans) : [];
+  const totalIps = subnets.reduce((sum, s) => sum + s.allocations.length, 0);
 
   return (
     <div style={{ fontFamily: THEME.fonts.body, fontSize: 11, color: THEME.colors.text }}>
@@ -73,66 +164,73 @@ function SubnetOverview() {
         }}
       >
         <div style={{ fontSize: 9, color: THEME.colors.info, fontWeight: 700, textTransform: "uppercase", letterSpacing: 1 }}>
-          IPAM — IP Address Manager
+          IPAM — Network Overview
         </div>
-        <div style={{ fontSize: 14, fontWeight: 700 }}>Subnet Overview</div>
+        <div style={{ fontSize: 14, fontWeight: 700 }}>Auto-Discovered Subnets</div>
       </div>
 
       <div style={{ padding: 16 }}>
-        {/* Subnet list */}
+        {/* Stats */}
+        <div style={{ fontSize: 10, color: THEME.colors.textDim, marginBottom: 12 }}>
+          {subnets.length} subnet{subnets.length !== 1 ? "s" : ""} | {totalIps} address{totalIps !== 1 ? "es" : ""} in use
+        </div>
+
         {subnets.length === 0 && (
           <div style={{ padding: 20, textAlign: "center", color: THEME.colors.textDim }}>
-            No subnets configured. Create one to start planning your IP space.
+            No IP addresses configured on any devices yet.
           </div>
         )}
 
-        <div style={{ display: "flex", flexDirection: "column", gap: 8, marginBottom: 16 }}>
+        <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
           {subnets.map((subnet) => {
             const total = hostCount(subnet.mask);
-            const used = Object.keys(subnet.allocations).length;
+            const used = subnet.allocations.length;
             const pct = total > 0 ? Math.min((used / total) * 100, 100) : 0;
-            const vlan = state?.vlans[subnet.vlanId ?? -1];
+            const hasConflicts = subnet.allocations.some((a) => a.conflict);
 
             return (
               <button
-                key={subnet.id}
-                onClick={() => navigate({ type: "ipam", subpage: subnet.id })}
+                key={subnet.networkKey}
+                onClick={() => navigate({ type: "ipam", subpage: subnet.networkKey })}
                 style={{
                   display: "flex",
                   alignItems: "center",
                   gap: 12,
                   padding: "10px 14px",
                   background: THEME.colors.bgCard,
-                  border: `1px solid ${THEME.colors.border}`,
+                  border: `1px solid ${hasConflicts ? THEME.colors.danger : THEME.colors.border}`,
                   borderRadius: THEME.radius.md,
                   cursor: "pointer",
                   textAlign: "left",
                   width: "100%",
+                  fontFamily: THEME.fonts.body,
+                  color: THEME.colors.text,
                 }}
                 onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.borderColor = THEME.colors.info; }}
-                onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.borderColor = THEME.colors.border; }}
+                onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.borderColor = hasConflicts ? THEME.colors.danger : THEME.colors.border; }}
               >
                 <div style={{ flex: 1 }}>
-                  <div style={{ fontSize: 12, fontWeight: 600, color: THEME.colors.text, marginBottom: 2 }}>
-                    {subnet.name}
-                  </div>
-                  <div style={{ fontFamily: THEME.fonts.mono, fontSize: 10, color: THEME.colors.textMuted }}>
+                  <div style={{ fontFamily: THEME.fonts.mono, fontSize: 12, fontWeight: 600, marginBottom: 2 }}>
                     {subnet.network}/{subnet.mask}
                   </div>
+                  {subnet.gateway && (
+                    <div style={{ fontSize: 9, color: THEME.colors.textDim }}>
+                      Gateway: {subnet.gateway}
+                    </div>
+                  )}
                 </div>
 
-                {vlan && (
-                  <span
-                    style={{
-                      fontSize: 9,
-                      padding: "1px 6px",
-                      borderRadius: 3,
-                      background: `${vlan.color}22`,
-                      border: `1px solid ${vlan.color}44`,
-                      color: vlan.color,
-                    }}
-                  >
-                    VLAN {vlan.id}
+                {hasConflicts && (
+                  <span style={{
+                    fontSize: 8,
+                    padding: "1px 6px",
+                    borderRadius: 3,
+                    background: `${THEME.colors.danger}22`,
+                    border: `1px solid ${THEME.colors.danger}44`,
+                    color: THEME.colors.danger,
+                    fontWeight: 700,
+                  }}>
+                    CONFLICT
                   </span>
                 )}
 
@@ -152,66 +250,9 @@ function SubnetOverview() {
                     />
                   </div>
                 </div>
-
-                <SmallButton
-                  label="Delete"
-                  color={THEME.colors.danger}
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    handleDelete(subnet.id);
-                  }}
-                />
               </button>
             );
           })}
-        </div>
-
-        {/* Add subnet form */}
-        <div
-          style={{
-            padding: 12,
-            background: THEME.colors.bgCard,
-            borderRadius: THEME.radius.md,
-            border: `1px solid ${THEME.colors.border}`,
-          }}
-        >
-          <div style={{ fontSize: 10, fontWeight: 600, marginBottom: 8, color: THEME.colors.textMuted }}>Add Subnet</div>
-          <div style={{ display: "flex", gap: 6, alignItems: "center", flexWrap: "wrap" }}>
-            <input
-              value={network}
-              onChange={(e) => setNetwork(e.target.value)}
-              placeholder="10.0.1.0"
-              style={{ ...inputStyle, width: 110 }}
-              onKeyDown={(e) => { if (e.key === "Enter") handleCreate(); }}
-            />
-            <span style={{ fontFamily: THEME.fonts.mono, color: THEME.colors.textDim }}>/</span>
-            <input
-              value={mask}
-              onChange={(e) => setMask(e.target.value)}
-              placeholder="24"
-              style={{ ...inputStyle, width: 36 }}
-              onKeyDown={(e) => { if (e.key === "Enter") handleCreate(); }}
-            />
-            <input
-              value={name}
-              onChange={(e) => setName(e.target.value)}
-              placeholder="Name"
-              style={{ ...inputStyle, width: 100 }}
-              onKeyDown={(e) => { if (e.key === "Enter") handleCreate(); }}
-            />
-            <select
-              value={vlanId}
-              onChange={(e) => setVlanId(e.target.value)}
-              style={{ ...inputStyle, fontFamily: THEME.fonts.body }}
-            >
-              <option value="">No VLAN</option>
-              {vlans.map((v) => (
-                <option key={v.id} value={v.id}>VLAN {v.id} — {v.name}</option>
-              ))}
-            </select>
-            <SmallButton label="Add" color={THEME.colors.success} onClick={handleCreate} />
-          </div>
-          {error && <div style={{ fontSize: 9, color: THEME.colors.danger, marginTop: 4 }}>{error}</div>}
         </div>
       </div>
     </div>
@@ -220,49 +261,8 @@ function SubnetOverview() {
 
 // --- Subnet Detail ---
 
-function SubnetDetail({ subnetId }: { subnetId: string }) {
-  const state = useGameStore((s) => s.state);
+function SubnetDetail({ subnet }: { subnet: DiscoveredSubnet }) {
   const navigate = useBrowserStore((s) => s.navigate);
-  const subnet = state?.ipam.subnets[subnetId];
-
-  const [ip, setIp] = useState("");
-  const [deviceId, setDeviceId] = useState("");
-  const [description, setDescription] = useState("");
-  const [error, setError] = useState<string | null>(null);
-
-  if (!subnet || !state) return null;
-
-  const allocations = Object.values(subnet.allocations);
-  const total = hostCount(subnet.mask);
-  const used = allocations.length;
-  const pct = total > 0 ? Math.min((used / total) * 100, 100) : 0;
-  const vlan = state.vlans[subnet.vlanId ?? -1];
-  const devices = Object.values(state.devices);
-
-  const handleAllocate = async () => {
-    setError(null);
-    try {
-      await rpcClient.call("allocateIp", {
-        subnetId,
-        ip,
-        deviceId: deviceId || undefined,
-        description,
-      });
-      setIp("");
-      setDeviceId("");
-      setDescription("");
-    } catch (e) {
-      setError((e as Error).message);
-    }
-  };
-
-  const handleRelease = async (releaseIp: string) => {
-    try {
-      await rpcClient.call("releaseIp", { subnetId, ip: releaseIp });
-    } catch (e) {
-      setError((e as Error).message);
-    }
-  };
 
   return (
     <div style={{ fontFamily: THEME.fonts.body, fontSize: 11, color: THEME.colors.text }}>
@@ -279,39 +279,20 @@ function SubnetDetail({ subnetId }: { subnetId: string }) {
       >
         <div>
           <div style={{ fontSize: 9, color: THEME.colors.info, fontWeight: 700, textTransform: "uppercase", letterSpacing: 1 }}>
-            IPAM — IP Address Manager
+            IPAM — Subnet Detail
           </div>
-          <div style={{ fontSize: 14, fontWeight: 700 }}>{subnet.name}</div>
-          <div style={{ fontSize: 10, fontFamily: THEME.fonts.mono, color: THEME.colors.textMuted }}>
+          <div style={{ fontSize: 14, fontWeight: 700, fontFamily: THEME.fonts.mono }}>
             {subnet.network}/{subnet.mask}
-            {vlan && (
-              <span
-                style={{
-                  marginLeft: 8,
-                  fontSize: 9,
-                  padding: "1px 6px",
-                  borderRadius: 3,
-                  background: `${vlan.color}22`,
-                  border: `1px solid ${vlan.color}44`,
-                  color: vlan.color,
-                }}
-              >
-                VLAN {vlan.id}
-              </span>
-            )}
           </div>
+          {subnet.gateway && (
+            <div style={{ fontSize: 10, color: THEME.colors.textMuted }}>
+              Gateway: {subnet.gateway}
+            </div>
+          )}
         </div>
         <div style={{ marginLeft: "auto", textAlign: "right" }}>
-          <div style={{ fontSize: 10, color: THEME.colors.textDim }}>{used}/{total} allocated</div>
-          <div style={{ width: 80, height: 4, background: THEME.colors.bgInput, borderRadius: 2, marginTop: 2 }}>
-            <div
-              style={{
-                height: "100%",
-                width: `${pct}%`,
-                background: pct > 80 ? THEME.colors.warning : THEME.colors.info,
-                borderRadius: 2,
-              }}
-            />
+          <div style={{ fontSize: 10, color: THEME.colors.textDim }}>
+            {subnet.allocations.length}/{hostCount(subnet.mask)} allocated
           </div>
         </div>
       </div>
@@ -340,85 +321,70 @@ function SubnetDetail({ subnetId }: { subnetId: string }) {
             <tr style={{ borderBottom: `1px solid ${THEME.colors.border}` }}>
               <Th>IP Address</Th>
               <Th>Device</Th>
-              <Th>Description</Th>
-              <Th></Th>
+              <Th>Type</Th>
+              <Th>Interface</Th>
             </tr>
           </thead>
           <tbody>
-            {allocations.length === 0 && (
+            {subnet.allocations.length === 0 && (
               <tr>
                 <td colSpan={4} style={{ padding: 8, textAlign: "center", color: THEME.colors.textDim }}>
-                  No allocations yet
+                  No allocations
                 </td>
               </tr>
             )}
-            {allocations
-              .sort((a, b) => ipSortKey(a.ip) - ipSortKey(b.ip))
-              .map((alloc) => {
-                const device = alloc.deviceId ? state.devices[alloc.deviceId] : null;
-                return (
-                  <tr key={alloc.ip} style={{ borderBottom: `1px solid ${THEME.colors.borderDark}` }}>
-                    <td style={{ padding: "6px 8px", fontFamily: THEME.fonts.mono }}>
-                      {alloc.ip}
-                    </td>
-                    <td style={{ padding: "6px 8px" }}>
-                      {device ? (
-                        <span style={{ color: THEME.colors.text }}>{device.name}</span>
-                      ) : (
-                        <span style={{ color: THEME.colors.textDim }}>—</span>
-                      )}
-                    </td>
-                    <td style={{ padding: "6px 8px", color: THEME.colors.textMuted }}>
-                      {alloc.description}
-                    </td>
-                    <td style={{ padding: "6px 4px", textAlign: "right" }}>
-                      <SmallButton label="Release" color={THEME.colors.danger} onClick={() => handleRelease(alloc.ip)} />
-                    </td>
-                  </tr>
-                );
-              })}
+            {subnet.allocations.map((alloc, i) => (
+              <tr
+                key={`${alloc.ip}-${alloc.deviceId}-${i}`}
+                style={{
+                  borderBottom: `1px solid ${THEME.colors.borderDark}`,
+                  background: alloc.conflict ? `${THEME.colors.danger}11` : undefined,
+                }}
+              >
+                <td style={{ padding: "6px 8px", fontFamily: THEME.fonts.mono }}>
+                  {alloc.ip}
+                  {alloc.conflict && (
+                    <span style={{
+                      marginLeft: 6,
+                      fontSize: 8,
+                      padding: "0 4px",
+                      background: THEME.colors.danger,
+                      color: "#fff",
+                      borderRadius: 2,
+                      fontWeight: 700,
+                      fontFamily: THEME.fonts.body,
+                    }}>
+                      CONFLICT
+                    </span>
+                  )}
+                </td>
+                <td style={{ padding: "6px 8px" }}>
+                  <button
+                    onClick={() => navigate({ type: "console", deviceId: alloc.deviceId })}
+                    style={{
+                      background: "none",
+                      border: "none",
+                      color: THEME.colors.info,
+                      cursor: "pointer",
+                      fontFamily: THEME.fonts.body,
+                      fontSize: 10,
+                      padding: 0,
+                      textDecoration: "underline",
+                    }}
+                  >
+                    {alloc.deviceName}
+                  </button>
+                </td>
+                <td style={{ padding: "6px 8px", color: THEME.colors.textMuted, textTransform: "capitalize" }}>
+                  {alloc.deviceType}
+                </td>
+                <td style={{ padding: "6px 8px", color: THEME.colors.textMuted }}>
+                  {alloc.portDescription}
+                </td>
+              </tr>
+            ))}
           </tbody>
         </table>
-
-        {/* Allocate form */}
-        <div
-          style={{
-            padding: 10,
-            background: THEME.colors.bgCard,
-            borderRadius: THEME.radius.md,
-            border: `1px solid ${THEME.colors.border}`,
-          }}
-        >
-          <div style={{ fontSize: 10, fontWeight: 600, marginBottom: 6, color: THEME.colors.textMuted }}>Allocate IP</div>
-          <div style={{ display: "flex", gap: 6, alignItems: "center", flexWrap: "wrap" }}>
-            <input
-              value={ip}
-              onChange={(e) => setIp(e.target.value)}
-              placeholder={`e.g. ${subnet.network.replace(/\.0$/, ".10")}`}
-              style={{ ...inputStyle, width: 120 }}
-              onKeyDown={(e) => { if (e.key === "Enter") handleAllocate(); }}
-            />
-            <select
-              value={deviceId}
-              onChange={(e) => setDeviceId(e.target.value)}
-              style={{ ...inputStyle, fontFamily: THEME.fonts.body, width: 140 }}
-            >
-              <option value="">No device</option>
-              {devices.map((d) => (
-                <option key={d.id} value={d.id}>{d.name}</option>
-              ))}
-            </select>
-            <input
-              value={description}
-              onChange={(e) => setDescription(e.target.value)}
-              placeholder="Description"
-              style={{ ...inputStyle, flex: 1, minWidth: 80 }}
-              onKeyDown={(e) => { if (e.key === "Enter") handleAllocate(); }}
-            />
-            <SmallButton label="Allocate" color={THEME.colors.success} onClick={handleAllocate} />
-          </div>
-          {error && <div style={{ fontSize: 9, color: THEME.colors.danger, marginTop: 4 }}>{error}</div>}
-        </div>
       </div>
     </div>
   );
@@ -434,36 +400,3 @@ function ipSortKey(ip: string): number {
 function Th({ children }: { children?: React.ReactNode }) {
   return <th style={{ textAlign: "left", padding: "6px 8px", color: THEME.colors.textDim, fontWeight: 600, fontSize: 9 }}>{children}</th>;
 }
-
-function SmallButton({ label, color, onClick }: { label: string; color: string; onClick: (e: React.MouseEvent) => void }) {
-  return (
-    <button
-      onClick={onClick}
-      style={{
-        background: "none",
-        border: `1px solid ${color}44`,
-        borderRadius: THEME.radius.sm,
-        color,
-        fontSize: 9,
-        padding: "2px 8px",
-        cursor: "pointer",
-        fontFamily: THEME.fonts.body,
-      }}
-      onMouseEnter={(e) => { (e.target as HTMLElement).style.background = `${color}11`; }}
-      onMouseLeave={(e) => { (e.target as HTMLElement).style.background = "none"; }}
-    >
-      {label}
-    </button>
-  );
-}
-
-const inputStyle: React.CSSProperties = {
-  padding: "3px 6px",
-  background: THEME.colors.bgInput,
-  border: `1px solid ${THEME.colors.borderDark}`,
-  borderRadius: THEME.radius.sm,
-  color: THEME.colors.text,
-  fontFamily: THEME.fonts.mono,
-  fontSize: 10,
-  outline: "none",
-};

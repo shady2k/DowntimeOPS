@@ -1,6 +1,8 @@
+import { useEffect } from "react";
 import { useBrowserStore } from "./browserStore";
 import type { BrowserRoute } from "./browserStore";
 import { useGameStore } from "../../store/gameStore";
+import { rpcClient } from "../../rpc/client";
 import { getDeviceIp } from "@downtime-ops/shared";
 import type { GameState, Device } from "@downtime-ops/shared";
 import { HomePage } from "./pages/HomePage";
@@ -12,11 +14,20 @@ import { ShopPage } from "./pages/ShopPage";
 import { DocsPage } from "./pages/DocsPage";
 import { IpamPage } from "./pages/IpamPage";
 import { ClientPanel } from "../panels/ClientPanel";
+import { QuestsPage } from "./pages/QuestsPage";
+import { AchievementsPage } from "./pages/AchievementsPage";
 import { THEME } from "../theme";
 
 export function PageRouter() {
   const route = useBrowserStore((s) => s.route);
   const state = useGameStore((s) => s.state);
+
+  // Track console page visits for quest completion
+  useEffect(() => {
+    if (route.type === "console") {
+      rpcClient.call("reportPageVisit", { page: "console" }).catch(() => {});
+    }
+  }, [route.type]);
 
   if (!state) {
     return <ErrorPage code="not_found" message="No game state" />;
@@ -54,6 +65,12 @@ function renderRoute(route: BrowserRoute, state: GameState) {
 
     case "clients":
       return <ClientPanel />;
+
+    case "quests":
+      return <QuestsPage />;
+
+    case "achievements":
+      return <AchievementsPage />;
 
     case "docs":
       return <DocsPage article={route.article} />;

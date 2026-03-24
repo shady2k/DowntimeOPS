@@ -171,6 +171,12 @@ export function handleRpcRequest(
           zoomIndex: (params as Record<string, unknown>).zoomIndex as number,
         });
 
+      case "reportPageVisit":
+        return handleAction(server, id, {
+          type: "REPORT_PAGE_VISIT",
+          page: (params as Record<string, unknown>).page as string,
+        });
+
       case "pause":
         return handleAction(server, id, { type: "SET_SPEED", speed: 0 });
 
