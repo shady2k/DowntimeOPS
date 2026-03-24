@@ -64,29 +64,29 @@ export function BrowserChrome() {
         style={{
           display: "flex",
           alignItems: "center",
-          padding: "6px 10px",
+          padding: "7px 12px",
           background: THEME.colors.bgDarkest,
           borderBottom: `1px solid ${THEME.colors.borderDark}`,
           gap: 8,
         }}
       >
-        <div style={{ display: "flex", gap: 5 }}>
+        <div style={{ display: "flex", gap: 6 }}>
           <div
             onClick={closeBrowser}
             style={{
-              width: 10,
-              height: 10,
+              width: 12,
+              height: 12,
               borderRadius: "50%",
               background: THEME.colors.danger,
               cursor: "pointer",
             }}
           />
-          <div style={{ width: 10, height: 10, borderRadius: "50%", background: THEME.colors.warning, opacity: 0.4 }} />
-          <div style={{ width: 10, height: 10, borderRadius: "50%", background: THEME.colors.success, opacity: 0.4 }} />
+          <div style={{ width: 12, height: 12, borderRadius: "50%", background: THEME.colors.warning, opacity: 0.4 }} />
+          <div style={{ width: 12, height: 12, borderRadius: "50%", background: THEME.colors.success, opacity: 0.4 }} />
         </div>
         <span
           style={{
-            fontSize: 10,
+            fontSize: 12,
             color: THEME.colors.textDim,
             fontFamily: THEME.fonts.body,
             fontWeight: 600,
@@ -102,7 +102,7 @@ export function BrowserChrome() {
             border: "none",
             color: THEME.colors.textDim,
             cursor: "pointer",
-            fontSize: 14,
+            fontSize: 16,
             fontFamily: THEME.fonts.mono,
             padding: "0 4px",
             lineHeight: 1,
@@ -117,7 +117,7 @@ export function BrowserChrome() {
         style={{
           display: "flex",
           alignItems: "center",
-          padding: "4px 10px",
+          padding: "5px 12px",
           background: THEME.colors.bgDarkest,
           borderBottom: `1px solid ${THEME.colors.border}`,
           gap: 6,
@@ -146,11 +146,11 @@ export function BrowserChrome() {
             }}
             style={{
               flex: 1,
-              padding: "3px 8px",
+              padding: "4px 8px",
               background: THEME.colors.bgInput,
               borderRadius: THEME.radius.sm,
               border: `1px solid ${THEME.colors.accent}`,
-              fontSize: 10,
+              fontSize: 12,
               fontFamily: THEME.fonts.mono,
               color: THEME.colors.text,
               outline: "none",
@@ -163,11 +163,11 @@ export function BrowserChrome() {
             }}
             style={{
               flex: 1,
-              padding: "3px 8px",
+              padding: "4px 8px",
               background: THEME.colors.bgInput,
               borderRadius: THEME.radius.sm,
               border: `1px solid ${THEME.colors.borderDark}`,
-              fontSize: 10,
+              fontSize: 12,
               fontFamily: THEME.fonts.mono,
               color: THEME.colors.textMuted,
               cursor: accessMode === "network" ? "text" : "default",
@@ -184,7 +184,7 @@ export function BrowserChrome() {
           <span
             onClick={resetZoom}
             style={{
-              fontSize: 9,
+              fontSize: 11,
               fontFamily: THEME.fonts.mono,
               color: zoomPct === 100 ? THEME.colors.textDim : THEME.colors.textMuted,
               cursor: "pointer",
@@ -205,7 +205,7 @@ export function BrowserChrome() {
         style={{
           display: "flex",
           alignItems: "center",
-          padding: "3px 10px",
+          padding: "4px 12px",
           background: THEME.colors.bgDarkest,
           borderBottom: `1px solid ${THEME.colors.border}`,
           gap: 4,
@@ -220,9 +220,9 @@ export function BrowserChrome() {
               border: "none",
               color: THEME.colors.textMuted,
               cursor: "pointer",
-              fontSize: 9,
+              fontSize: 11,
               fontFamily: THEME.fonts.body,
-              padding: "2px 6px",
+              padding: "3px 8px",
               borderRadius: THEME.radius.sm,
             }}
             onMouseEnter={(e) => {
@@ -238,6 +238,7 @@ export function BrowserChrome() {
           </button>
         ))}
       </div>
+
     </>
   );
 }
@@ -250,7 +251,7 @@ function NavButton({ label, disabled, onClick }: { label: string; disabled: bool
       style={{
         background: "none",
         border: "none",
-        fontSize: 12,
+        fontSize: 14,
         color: disabled ? THEME.colors.textDim : THEME.colors.textMuted,
         cursor: disabled ? "default" : "pointer",
         padding: "0 2px",
@@ -337,3 +338,4 @@ function parseAddressBarInput(text: string): BrowserRoute | null {
 
   return null;
 }
+

@@ -4,14 +4,16 @@ import { THEME } from "../theme";
 import type { Quest } from "@downtime-ops/shared";
 
 /**
- * Shows a celebration overlay when a quest transitions to "completed".
- * Stays visible for 6 seconds or until clicked.
+ * Shows a toast notification when a quest transitions to "completed".
+ * Auto-dismisses after 5 seconds, click to dismiss early.
+ * Non-blocking — appears in bottom-right corner.
  */
 export function QuestCompleteOverlay() {
   const quests = useGameStore((s) => s.state?.quests);
   const [completedQuest, setCompletedQuest] = useState<Quest | null>(null);
   const [visible, setVisible] = useState(false);
   const shownQuestsRef = useRef<Set<string>>(new Set());
+  const timerRef = useRef<ReturnType<typeof setTimeout>>(undefined);
 
   useEffect(() => {
     if (!quests) return;
@@ -22,8 +24,9 @@ export function QuestCompleteOverlay() {
         setCompletedQuest(quest);
         setVisible(true);
 
-        const timer = setTimeout(() => setVisible(false), 6000);
-        return () => clearTimeout(timer);
+        clearTimeout(timerRef.current);
+        timerRef.current = setTimeout(() => setVisible(false), 5000);
+        break;
       }
     }
   }, [quests]);
@@ -32,7 +35,6 @@ export function QuestCompleteOverlay() {
 
   const stepsCompleted = completedQuest.steps.filter((s) => s.completed).length;
 
-  // Figure out if there's a next quest
   const nextQuest = quests
     ? Object.values(quests.quests).find((q) => q.status === "active" && q.id !== completedQuest.id)
     : null;
@@ -42,71 +44,66 @@ export function QuestCompleteOverlay() {
       onClick={() => setVisible(false)}
       style={{
         position: "absolute",
-        inset: 0,
-        display: "flex",
-        alignItems: "center",
-        justifyContent: "center",
-        pointerEvents: "auto",
+        bottom: 20,
+        right: 20,
         zIndex: 600,
+        pointerEvents: "auto",
+        cursor: "pointer",
+        animation: "slideInRight 0.3s ease-out",
       }}
     >
       <div
         style={{
-          padding: "28px 44px",
-          background: THEME.colors.overlay,
+          padding: "16px 22px",
+          background: THEME.colors.bgDark,
           border: `2px solid ${THEME.colors.success}`,
-          borderRadius: THEME.radius.xl,
+          borderRadius: THEME.radius.lg,
           textAlign: "center",
           fontFamily: THEME.fonts.heading,
           boxShadow: THEME.shadows.glow(THEME.colors.success),
-          maxWidth: 400,
+          maxWidth: 320,
         }}
-        onClick={(e) => e.stopPropagation()}
       >
         <div
           style={{
-            fontSize: 11,
+            fontSize: 9,
             color: THEME.colors.success,
             textTransform: "uppercase",
             letterSpacing: 2,
-            marginBottom: 6,
+            marginBottom: 4,
           }}
         >
           Quest Complete
         </div>
         <div
           style={{
-            fontSize: 20,
+            fontSize: 16,
             fontWeight: 800,
             color: THEME.colors.accent,
-            marginBottom: 10,
+            marginBottom: 6,
           }}
         >
           {completedQuest.title}
         </div>
-        <div style={{ fontSize: 12, color: THEME.colors.textMuted, marginBottom: 6 }}>
+        <div style={{ fontSize: 11, color: THEME.colors.textMuted }}>
           {stepsCompleted} steps completed
         </div>
 
         {nextQuest && (
           <div
             style={{
-              marginTop: 14,
-              padding: "8px 14px",
+              marginTop: 10,
+              padding: "6px 10px",
               background: THEME.colors.accentBg,
               border: `1px solid ${THEME.colors.accent}44`,
               borderRadius: THEME.radius.md,
-              fontSize: 11,
+              fontSize: 10,
               color: THEME.colors.accent,
             }}
           >
             Next: {nextQuest.title}
           </div>
         )}
-
-        <div style={{ fontSize: 9, color: THEME.colors.textDim, marginTop: 12 }}>
-          Click anywhere to dismiss
-        </div>
       </div>
     </div>
   );

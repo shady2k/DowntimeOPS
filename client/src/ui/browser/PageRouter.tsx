@@ -18,6 +18,9 @@ import { QuestsPage } from "./pages/QuestsPage";
 import { AchievementsPage } from "./pages/AchievementsPage";
 import { THEME } from "../theme";
 
+/** Pages that manage their own scroll (two-panel layouts, etc.) */
+const FULL_HEIGHT_ROUTES = new Set(["shop"]);
+
 export function PageRouter() {
   const route = useBrowserStore((s) => s.route);
   const state = useGameStore((s) => s.state);
@@ -33,7 +36,15 @@ export function PageRouter() {
     return <ErrorPage code="not_found" message="No game state" />;
   }
 
-  return renderRoute(route, state);
+  const content = renderRoute(route, state);
+
+  // Full-height pages fill the viewport and manage their own scrolling
+  if (FULL_HEIGHT_ROUTES.has(route.type)) {
+    return <div style={{ flex: 1, display: "flex", flexDirection: "column", overflow: "hidden" }}>{content}</div>;
+  }
+
+  // Default: page content scrolls within the viewport
+  return <div style={{ flex: 1, overflow: "auto" }}>{content}</div>;
 }
 
 function renderRoute(route: BrowserRoute, state: GameState) {

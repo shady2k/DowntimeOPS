@@ -6,7 +6,7 @@
  * Phaser key: "device-server" | JSON: device-server-1u.json
  */
 
-import { label, rj45, usb, vents, svgDoc } from "./DeviceBuilder";
+import { label, rj45, consolePort, usb, vents, svgDoc } from "./DeviceBuilder";
 
 function powerButton(cx: number, cy: number): string {
   return `
@@ -26,9 +26,10 @@ function driveBay(x: number): string {
 }
 
 export function buildServerSvg(): string {
-  const usbX = 158;
-  const nic0X = 172;
-  const nic1X = 190;
+  const usbX = 150;
+  const conX = 162;
+  const nic0X = 180;
+  const nic1X = 198;
   const portW = 16;
   const portH = 10;
   const portY = 4;
@@ -39,9 +40,10 @@ export function buildServerSvg(): string {
   ${driveBay(94)}
   ${driveBay(121)}
   ${usb(usbX, 5)}
+  ${consolePort(conX, 4)}
   ${rj45(nic0X, portY, portW, portH)}
   ${rj45(nic1X, portY, portW, portH)}
-  ${vents(210, 195)}`;
+  ${vents(218, 187)}`;
 
   return svgDoc('#132016', content);
 }

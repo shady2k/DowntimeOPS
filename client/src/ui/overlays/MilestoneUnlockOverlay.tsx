@@ -31,6 +31,8 @@ export function MilestoneUnlockOverlay() {
     }
   }, [milestones]);
 
+  const timerRef = useRef<ReturnType<typeof setTimeout>>(undefined);
+
   // Show next in queue
   useEffect(() => {
     if (current || queue.length === 0) return;
@@ -39,8 +41,8 @@ export function MilestoneUnlockOverlay() {
     setCurrent(next);
     setQueue((prev) => prev.slice(1));
 
-    const timer = setTimeout(() => setCurrent(null), 4000);
-    return () => clearTimeout(timer);
+    clearTimeout(timerRef.current);
+    timerRef.current = setTimeout(() => setCurrent(null), 4000);
   }, [current, queue]);
 
   if (!current) return null;

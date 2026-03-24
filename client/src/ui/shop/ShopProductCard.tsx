@@ -38,7 +38,7 @@ export function ShopProductCard({ listing, canAfford, cartQty, onAddToCart, cabl
     : DEVICE_COLORS[listing.specs.type] || THEME.colors.textMuted;
 
   return (
-    <div style={{ ...cardStyle(color), padding: "12px 14px", position: "relative" }}>
+    <div style={{ ...cardStyle(color), padding: "12px 14px", position: "relative", display: "flex", flexDirection: "column" as const, height: "100%", boxSizing: "border-box" }}>
       {/* Brand */}
       <div
         style={{
@@ -113,7 +113,7 @@ export function ShopProductCard({ listing, canAfford, cartQty, onAddToCart, cabl
       </div>
 
       {/* Price + Add to Cart */}
-      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginTop: "auto" }}>
         <div
           style={{
             fontSize: 15,

@@ -2,6 +2,7 @@ import { useEffect, useCallback } from "react";
 import { useBrowserStore, ZOOM_STEPS } from "./browserStore";
 import { useGameStore } from "../../store/gameStore";
 import { BrowserChrome } from "./BrowserChrome";
+import { QuestHintBar } from "./QuestHintBar";
 import { PageRouter } from "./PageRouter";
 import { THEME } from "../theme";
 
@@ -62,7 +63,7 @@ export function GameBrowser() {
       <div
         style={{
           flex: 1,
-          overflow: "auto",
+          overflow: "hidden",
           background: THEME.colors.bgPanel,
         }}
       >
@@ -71,12 +72,16 @@ export function GameBrowser() {
             transform: `scale(${zoom})`,
             transformOrigin: "top left",
             width: `${100 / zoom}%`,
-            minHeight: "100%",
+            height: `${100 / zoom}%`,
+            display: "flex",
+            flexDirection: "column" as const,
           }}
         >
           <PageRouter />
         </div>
       </div>
+
+      <QuestHintBar />
     </div>
   );
 }

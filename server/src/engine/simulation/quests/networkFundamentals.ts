@@ -10,14 +10,14 @@ export const NETWORK_FUNDAMENTALS_STEPS: Array<Omit<QuestStep, "completed" | "co
   {
     id: "nf_configure_router_lan",
     title: "Configure Router LAN Interface",
-    description: "On the router management page, find the LAN interfaces section. Set one of the LAN ports to IP 10.0.1.1 with mask /24. This will be the gateway for your server subnet.",
-    hint: "Router console → Interfaces → set IP",
+    description: "On the router management page, eth0 is your WAN uplink — don't touch it. Click Edit on eth1 (a LAN port) and set its IP to 10.0.1.1 with mask /24. This will be the gateway for your server subnet.",
+    hint: "Router console → Interfaces → eth1 → Edit → set IP",
   },
   {
     id: "nf_configure_server",
     title: "Configure Server Network",
-    description: "Open the server's console page. Set its IP to 10.0.1.10, mask /24, and gateway to 10.0.1.1 (your router's LAN IP). This puts the server on the same subnet as the router.",
-    hint: "Server console → Network → set IP/gateway",
+    description: "Click the CON port on the server to open its management page. Go to the Network tab and set IP to 10.0.1.10, mask /24, and gateway to 10.0.1.1 (your router's LAN IP).",
+    hint: "Server CON port → Network → set IP/gateway",
   },
   {
     id: "nf_check_ipam",
@@ -28,8 +28,8 @@ export const NETWORK_FUNDAMENTALS_STEPS: Array<Omit<QuestStep, "completed" | "co
   {
     id: "nf_accept_second_client",
     title: "Accept a Second Client",
-    description: "Go to the Contracts page. A new prospect should be waiting. Accept their contract to prove your network can handle multiple clients. Your configured network is now serving real traffic!",
-    hint: "Browser → Contracts → Accept",
+    description: "Go to the Contracts page and accept any prospect — it doesn't matter which one. Having two active clients proves your network can handle multiple tenants.",
+    hint: "Browser → Contracts → Accept any",
   },
 ];
 

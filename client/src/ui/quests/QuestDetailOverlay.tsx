@@ -4,7 +4,9 @@ import { QuestDetailModal } from "./QuestDetailModal";
 export function QuestDetailOverlay() {
   const open = useGameStore((s) => s.questDetailOpen);
   const close = useGameStore((s) => s.closeQuestDetail);
-  const quest = useGameStore((s) => s.state?.quests?.quests?.first_contract);
+  const quests = useGameStore((s) => s.state?.quests);
+  const activeId = quests?.activeQuestId;
+  const quest = activeId ? quests?.quests?.[activeId] : undefined;
 
   if (!open || !quest) return null;
 
