@@ -35,6 +35,11 @@ export interface RepairPortParams {
   portIndex: number;
 }
 
+export interface ConnectUplinkParams {
+  deviceId: string;
+  portIndex: number;
+}
+
 export interface AcceptClientParams {
   clientId: string;
 }
@@ -275,6 +280,7 @@ export interface RpcMethods {
   connectPorts: { params: ConnectPortsParams; result: ConnectPortsResult };
   disconnectPorts: { params: DisconnectPortsParams; result: void };
   repairPort: { params: RepairPortParams; result: void };
+  connectUplink: { params: ConnectUplinkParams; result: void };
   acceptClient: { params: AcceptClientParams; result: void };
   rejectClient: { params: RejectClientParams; result: void };
   startTracer: { params: StartTracerParams; result: StartTracerResult };

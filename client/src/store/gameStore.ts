@@ -56,6 +56,11 @@ export interface GameStore {
   cancelPlacing: () => void;
   selectClient: (clientId: string | null) => void;
   highlightAlert: (alertId: string | null) => void;
+
+  // Quest detail modal
+  questDetailOpen: boolean;
+  openQuestDetail: () => void;
+  closeQuestDetail: () => void;
 }
 
 export const useGameStore = create<GameStore>((set) => ({
@@ -151,4 +156,9 @@ export const useGameStore = create<GameStore>((set) => ({
   selectClient: (clientId) => set({ selectedClientId: clientId }),
 
   highlightAlert: (alertId) => set({ highlightedAlertId: alertId }),
+
+  // Quest detail modal
+  questDetailOpen: false,
+  openQuestDetail: () => set({ questDetailOpen: true }),
+  closeQuestDetail: () => set({ questDetailOpen: false }),
 }));

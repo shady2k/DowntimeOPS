@@ -140,6 +140,13 @@ export function handleRpcRequest(
           portIndex: (params as Record<string, unknown>).portIndex as number,
         });
 
+      case "connectUplink":
+        return handleAction(server, id, {
+          type: "CONNECT_UPLINK",
+          deviceId: (params as Record<string, unknown>).deviceId as string,
+          portIndex: (params as Record<string, unknown>).portIndex as number,
+        });
+
       case "acceptClient":
         return handleAction(server, id, {
           type: "ACCEPT_CLIENT",

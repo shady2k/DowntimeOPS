@@ -6,6 +6,7 @@ import { PhaserGame } from "./renderer/PhaserGame";
 import { GameBrowser } from "./ui/browser/GameBrowser";
 import { InventoryHUD } from "./ui/hud/InventoryHUD";
 import { MainMenu } from "./ui/MainMenu";
+import { QuestDetailOverlay } from "./ui/quests/QuestDetailOverlay";
 import { THEME } from "./ui/theme";
 
 function App() {
@@ -17,16 +18,36 @@ function App() {
     setupReconciler();
   }, []);
 
-  // ESC toggles menu
+  // ESC toggles menu, J toggles quest detail
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.key === "Escape" && appMode === "playing") {
-        // Don't open pause menu when browser or rack is open — they handle their own ESC
+      if (appMode !== "playing") return;
+
+      if (e.key === "Escape") {
+        // Close quest detail first if open
+        if (useGameStore.getState().questDetailOpen) {
+          useGameStore.getState().closeQuestDetail();
+          e.preventDefault();
+          return;
+        }
+        // Don't open pause menu when browser or rack is open
         if (useBrowserStore.getState().open) return;
         const view = useGameStore.getState().activeView;
         if (view === "rack") return;
         e.preventDefault();
         togglePauseMenu();
+        return;
+      }
+
+      if (e.key === "j" || e.key === "J") {
+        // Don't toggle when typing in browser address bar
+        if (useBrowserStore.getState().open) return;
+        const store = useGameStore.getState();
+        if (store.questDetailOpen) {
+          store.closeQuestDetail();
+        } else {
+          store.openQuestDetail();
+        }
       }
     };
     window.addEventListener("keydown", handleKeyDown);
@@ -66,6 +87,7 @@ function App() {
       <PhaserGame />
       <InventoryHUD />
       <GameBrowser />
+      <QuestDetailOverlay />
       {pauseMenuOpen && <MainMenu />}
     </div>
   );

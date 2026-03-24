@@ -150,6 +150,12 @@ export class WorldScene extends Phaser.Scene {
     if (!this.scene.isActive("UIScene")) {
       this.scene.launch("UIScene");
     }
+
+    // Launch quest tracker (always on top)
+    if (!this.scene.isActive("QuestTrackerScene")) {
+      this.scene.launch("QuestTrackerScene");
+      this.scene.bringToTop("QuestTrackerScene");
+    }
   }
 
   // --- Room management ---
@@ -712,6 +718,7 @@ export class WorldScene extends Phaser.Scene {
         } else if (!this.scene.isActive("RackScene")) {
           this.scene.launch("RackScene");
         }
+        this.scene.bringToTop("QuestTrackerScene");
       }
       return;
     }

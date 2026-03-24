@@ -3,10 +3,10 @@ import type { GameState, Device, Port, Link, CableType } from "@downtime-ops/sha
 import { useGameStore } from "../store/gameStore";
 import { useBrowserStore } from "../ui/browser/browserStore";
 import { rpcClient } from "../rpc/client";
-import { RACK, PORT, PALETTE, TEXT_COLORS } from "./TextureGenerator";
+import { RACK, PALETTE, TEXT_COLORS } from "./TextureGenerator";
 import { AssetRegistry } from "../assets/AssetRegistry";
 import { emitAudioEvent } from "./AudioEvents";
-import { getCableStyle, drawCablePath, drawCablePreview, interpolateCablePath, getPulseColor } from "./CablePrefab";
+import { getCableStyle, drawCablePath, drawCablePreview, getPulseColor } from "./CablePrefab";
 import { PerfMonitor } from "./PerfMonitor";
 import { buildRackDeviceVisual, getDeviceFaceGeometry } from "./DeviceVisualFactory";
 
@@ -129,6 +129,8 @@ export class RackScene extends Phaser.Scene {
   private previewGraphics: Phaser.GameObjects.Graphics | null = null;
   private effectGraphics: Phaser.GameObjects.Graphics | null = null;
   private tooltip: Phaser.GameObjects.Container | null = null;
+  private portTooltip: Phaser.GameObjects.Container | null = null;
+  private lastHoveredPortKey = "";
   private rackTitle: Phaser.GameObjects.Text | null = null;
 
 
@@ -424,6 +426,23 @@ export class RackScene extends Phaser.Scene {
         const dy = (this.panStart.y - pointer.y) / this.rackCam.zoom;
         const clamped = this.clampScrollToRack(this.rackCam.scrollX, this.camStart.y + dy, this.rackCam.zoom);
         this.rackCam.scrollY = clamped.scrollY;
+      }
+
+      // Port hover tooltip
+      const hitPort = this.findPortAtWorld(worldPoint.x, worldPoint.y);
+      const portKey = hitPort ? `${hitPort.deviceId}:${hitPort.portIndex}` : "";
+      if (portKey !== this.lastHoveredPortKey) {
+        this.lastHoveredPortKey = portKey;
+        this.hidePortTooltip();
+        if (hitPort) {
+          const state = useGameStore.getState().state;
+          if (state) {
+            const device = state.devices[hitPort.deviceId];
+            if (device) {
+              this.showPortTooltip(device, device.ports[hitPort.portIndex], hitPort.portIndex, hitPort.worldX, hitPort.worldY, state);
+            }
+          }
+        }
       }
     });
 
@@ -1077,27 +1096,7 @@ export class RackScene extends Phaser.Scene {
     const state = useGameStore.getState().state;
     if (!state) return;
 
-    for (const pulse of this.trafficPulses) {
-      const link = state.links[pulse.linkId];
-      if (!link) continue;
-
-      const devA = state.devices[link.portA.deviceId];
-      const devB = state.devices[link.portB.deviceId];
-      if (!devA || !devB) continue;
-
-      const posA = this.getPortWorldPos(devA, link.portA.portIndex);
-      const posB = this.getPortWorldPos(devB, link.portB.portIndex);
-      if (!posA || !posB) continue;
-
-      const bayRight = this.rl.x + this.rl.bayLeft + this.rl.bayWidth;
-      const pos = interpolateCablePath(posA, posB, bayRight, pulse.progress);
-
-      const size = 2 + (link.currentLoadMbps / Math.max(link.maxBandwidthMbps, 1)) * 2;
-      this.pulseGraphics.fillStyle(pulse.color, 0.3);
-      this.pulseGraphics.fillCircle(pos.x, pos.y, size + 2);
-      this.pulseGraphics.fillStyle(pulse.color, 0.8);
-      this.pulseGraphics.fillCircle(pos.x, pos.y, size);
-    }
+    // Traffic pulse circles removed — orange port LEDs are sufficient
   }
 
   private renderFailureEffects() {
@@ -1147,14 +1146,6 @@ export class RackScene extends Phaser.Scene {
         const pos = this.getPortWorldPos(device, port.index);
         if (!pos) continue;
 
-        const pulseScale =
-          0.8 + Math.sin(this.time.now * 0.005 + port.index) * 0.3;
-        this.effectGraphics.lineStyle(1, PALETTE.portDown, 0.4 * pulseScale);
-        this.effectGraphics.strokeCircle(
-          pos.x,
-          pos.y,
-          PORT.RADIUS + 3 * pulseScale,
-        );
       }
     }
   }
@@ -1393,6 +1384,88 @@ export class RackScene extends Phaser.Scene {
     this.tooltip = null;
   }
 
+  private showPortTooltip(
+    device: Device,
+    port: Port,
+    portIndex: number,
+    worldX: number,
+    worldY: number,
+    state: GameState,
+  ) {
+    this.hidePortTooltip();
+
+    // Port label
+    const isRouter = device.type === "router";
+    const portLabel = isRouter && portIndex === 0 ? "WAN" : `eth${portIndex}`;
+
+    const lines: string[] = [`${device.name} — ${portLabel}`];
+    lines.push(`Status: ${port.status.toUpperCase()}`);
+
+    if (port.linkId) {
+      const link = state.links[port.linkId];
+      if (link) {
+        const otherId = link.portA.deviceId === device.id ? link.portB.deviceId : link.portA.deviceId;
+        const otherDev = state.devices[otherId];
+        lines.push(`Connected to: ${otherDev?.name || otherId}`);
+        if (link.currentLoadMbps > 0) {
+          lines.push(`Load: ${link.currentLoadMbps.toFixed(0)}/${link.maxBandwidthMbps} Mbps`);
+        }
+      }
+    } else {
+      lines.push("No cable");
+    }
+
+    if (port.status === "down") {
+      lines.push("Click to repair");
+    } else if (!port.linkId && port.status === "up") {
+      if (isRouter && portIndex === 0) {
+        lines.push("Click to connect ISP uplink");
+      } else {
+        lines.push("Click to start cabling");
+      }
+    }
+
+    const padding = 5;
+    const lineHeight = 11;
+    const textWidth = 130;
+    const bgHeight = lines.length * lineHeight + padding * 2;
+    const tipX = worldX + 4;
+    const tipY = worldY - bgHeight - 4;
+
+    const container = this.add.container(tipX, tipY).setDepth(DEPTH.TOOLTIPS);
+
+    const bg = this.add.graphics();
+    bg.fillStyle(0x302820, 0.95);
+    bg.fillRoundedRect(0, 0, textWidth + padding * 2, bgHeight, 3);
+    bg.lineStyle(1, 0x5a4e40, 0.8);
+    bg.strokeRoundedRect(0, 0, textWidth + padding * 2, bgHeight, 3);
+    container.add(bg);
+
+    for (let i = 0; i < lines.length; i++) {
+      const isTitle = i === 0;
+      const isAction = i === lines.length - 1 && (lines[i].startsWith("Click"));
+      const text = this.add.text(
+        padding,
+        padding + i * lineHeight,
+        lines[i],
+        {
+          fontSize: isTitle ? "8px" : "7px",
+          color: isAction ? "#e8a840" : isTitle ? TEXT_COLORS.primary : TEXT_COLORS.muted,
+          fontFamily: isTitle ? "'Nunito', sans-serif" : "'JetBrains Mono', monospace",
+          fontStyle: isTitle ? "bold" : "normal",
+        },
+      );
+      container.add(text);
+    }
+
+    this.portTooltip = container;
+  }
+
+  private hidePortTooltip() {
+    this.portTooltip?.destroy();
+    this.portTooltip = null;
+  }
+
   // ── Port rendering + interaction ──────────────────────────
 
   private createPortHitZones(
@@ -1584,6 +1657,22 @@ export class RackScene extends Phaser.Scene {
           .catch(() => {});
       }
     } else if (port.status === "up") {
+      // Special case: clicking router WAN port (port 0) auto-connects ISP uplink
+      if (device.type === "router" && portIndex === 0) {
+        const state = useGameStore.getState().state;
+        const hasUplinkHere = state?.uplinks.some((u) => u.deviceId === device.id);
+        if (!hasUplinkHere) {
+          rpcClient
+            .call("connectUplink", { deviceId: device.id, portIndex: 0 })
+            .then(() => {
+              console.log(`[uplink] connected ISP to ${device.id} WAN port`);
+            })
+            .catch((err: unknown) => {
+              console.error("[uplink] connectUplink failed:", err);
+            });
+          return;
+        }
+      }
       store.startCabling({ deviceId: device.id, portIndex });
     } else if (port.status === "down") {
       rpcClient
@@ -1654,8 +1743,13 @@ export class RackScene extends Phaser.Scene {
     const devB = state.devices[link.portB.deviceId];
     if (!devA || !devB) return;
 
-    const posA = this.getPortWorldPos(devA, link.portA.portIndex);
-    const posB = this.getPortWorldPos(devB, link.portB.portIndex);
+    // ISP demarc device (rackId="") — use fixed anchor at top-left of rack frame
+    const posA = devA.rackId === ""
+      ? { x: this.rl.x + this.rl.bayLeft - 8, y: this.rl.y + 20 }
+      : this.getPortWorldPos(devA, link.portA.portIndex);
+    const posB = devB.rackId === ""
+      ? { x: this.rl.x + this.rl.bayLeft - 8, y: this.rl.y + 20 }
+      : this.getPortWorldPos(devB, link.portB.portIndex);
     if (!posA || !posB) return;
 
     const utilization =

@@ -131,7 +131,7 @@ export class RackUIScene extends Phaser.Scene {
       if (s.state) {
         this.updateInventory();
         this.updateEconomy();
-      }
+        }
     });
   }
 

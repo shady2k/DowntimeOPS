@@ -293,6 +293,8 @@ function getRouteTitle(route: BrowserRoute, _accessMode: string): string {
       return `Device — ${route.ip}`;
     case "shop":
       return "DataCenter Supply Co.";
+    case "clients":
+      return "Clients & Contracts";
     case "ipam":
       return "IPAM";
     case "docs":

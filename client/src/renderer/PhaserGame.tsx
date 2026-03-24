@@ -5,6 +5,7 @@ import { RackScene } from "./RackScene";
 import { RackUIScene } from "./RackUIScene";
 import { WorldScene } from "../game/scenes/WorldScene";
 import { UIScene } from "../game/scenes/UIScene";
+import { QuestTrackerScene } from "../game/scenes/QuestTrackerScene";
 import { useGameStore } from "../store/gameStore";
 
 export function PhaserGame() {
@@ -22,7 +23,7 @@ export function PhaserGame() {
       type: Phaser.AUTO,
       parent: containerRef.current,
       backgroundColor: "#1a1410",
-      scene: [PreloadScene, WorldScene, UIScene, RackScene, RackUIScene],
+      scene: [PreloadScene, WorldScene, UIScene, RackScene, RackUIScene, QuestTrackerScene],
       physics: {
         default: "arcade",
         arcade: {

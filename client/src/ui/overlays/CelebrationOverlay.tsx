@@ -8,13 +8,13 @@ import { THEME } from "../theme";
  */
 export function CelebrationOverlay() {
   const revenue = useGameStore((s) => s.state?.monthlyRevenue ?? 0);
-  const tutorial = useGameStore((s) => s.state?.tutorial);
+  const quests = useGameStore((s) => s.state?.quests);
   const [shown, setShown] = useState(false);
   const [visible, setVisible] = useState(false);
   const [prevRevenue, setPrevRevenue] = useState(0);
 
   useEffect(() => {
-    if (prevRevenue === 0 && revenue > 0 && !shown && tutorial && !tutorial.tutorialComplete) {
+    if (prevRevenue === 0 && revenue > 0 && !shown && quests && !quests.tutorialComplete) {
       setShown(true);
       setVisible(true);
       // Auto-dismiss after 4 seconds
@@ -22,7 +22,7 @@ export function CelebrationOverlay() {
       return () => clearTimeout(timer);
     }
     setPrevRevenue(revenue);
-  }, [revenue, prevRevenue, shown, tutorial]);
+  }, [revenue, prevRevenue, shown, quests]);
 
   if (!visible) return null;
 

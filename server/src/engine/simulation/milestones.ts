@@ -100,9 +100,8 @@ export function evaluateMilestones(state: GameState): GameState {
   if (state.monthlyRevenue > state.monthlyExpenses && state.monthlyRevenue > 0)
     complete("first_month_profitable");
 
-  // First incident resolved — tracked by repairPort action, check tutorial flag
-  if (state.tutorial.objectives.some((o) => o.id === "survive_incident" && o.completed))
-    complete("first_incident_resolved");
+  // First incident resolved — directly completed by repairPort action in engine
+  // (milestone is set externally, we just check if it's already marked)
 
   // First congested link
   for (const link of Object.values(state.links)) {

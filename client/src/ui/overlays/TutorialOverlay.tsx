@@ -2,24 +2,27 @@ import { useGameStore } from "../../store/gameStore";
 import { THEME } from "../theme";
 
 /**
- * Tutorial spotlight overlay. Shows contextual callouts based on tutorial
- * state — points the player to the right part of the UI.
+ * Quest spotlight overlay. Shows contextual callouts based on current
+ * quest step — points the player to the right part of the UI.
  */
 export function TutorialOverlay() {
-  const tutorial = useGameStore((s) => s.state?.tutorial);
+  const quests = useGameStore((s) => s.state?.quests);
   const cablingFrom = useGameStore((s) => s.cablingFrom);
   const placingModel = useGameStore((s) => s.placingModel);
 
-  if (!tutorial || tutorial.tutorialComplete) return null;
+  if (!quests || quests.tutorialComplete) return null;
 
-  const currentObj = tutorial.objectives[tutorial.currentObjectiveIndex];
-  if (!currentObj) return null;
+  const quest = quests.quests.first_contract;
+  if (!quest || quest.status === "completed") return null;
 
-  // Determine which callout to show based on current objective + state
+  const currentStep = quest.steps[quest.currentStepIndex];
+  if (!currentStep) return null;
+
+  // Determine which callout to show based on current step + state
   let callout: { message: string; position: "rack" | "sidebar" | "top" } | null =
     null;
 
-  switch (currentObj.id) {
+  switch (currentStep.id) {
     case "install_router":
     case "install_switch":
     case "install_server":
@@ -28,15 +31,16 @@ export function TutorialOverlay() {
           message: "Click an empty slot in the rack to place your device",
           position: "rack",
         };
-      } else {
-        callout = {
-          message: "Open the Shop tab and buy the highlighted equipment",
-          position: "sidebar",
-        };
       }
       break;
-    case "connect_router_switch":
-    case "connect_switch_server":
+    case "connect_uplink":
+      callout = {
+        message: "Click the router's WAN port (blue, leftmost) to connect the ISP cable",
+        position: "rack",
+      };
+      break;
+    case "cable_router_switch":
+    case "cable_switch_server":
       if (cablingFrom) {
         callout = {
           message: "Now click a port on the other device to complete the cable",
@@ -49,9 +53,9 @@ export function TutorialOverlay() {
         };
       }
       break;
-    case "accept_client":
+    case "accept_contract":
       callout = {
-        message: "Switch to the Clients tab and accept the waiting contract",
+        message: "Use the staff computer and open the Clients page to accept PicoApp's contract",
         position: "sidebar",
       };
       break;
@@ -59,13 +63,6 @@ export function TutorialOverlay() {
       callout = {
         message: "Traffic is flowing! Watch the cables light up as revenue comes in",
         position: "top",
-      };
-      break;
-    case "survive_incident":
-      callout = {
-        message:
-          "An incident will happen soon. Click the red port to repair it when it does",
-        position: "rack",
       };
       break;
     default:

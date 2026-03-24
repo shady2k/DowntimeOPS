@@ -28,7 +28,7 @@ export type { IpamAllocation, IpamSubnet, IpamState } from "./Ipam";
 export type { Route } from "./Route";
 export type { FirewallRule } from "./FirewallRule";
 export type { Alert, LogEntry, Uplink, SaveInfo } from "./Common";
-export type { Objective, ObjectiveId, TutorialState } from "./Objective";
+export type { Quest, QuestId, QuestStep, QuestStatus, QuestState } from "./Quest";
 export type { Milestone, MilestoneId, MilestoneState } from "./Milestone";
 export type {
   Vec2,

@@ -7,7 +7,7 @@ import type { FirewallRule } from "./FirewallRule";
 import type { Client } from "./Client";
 import type { Connection } from "./Connection";
 import type { Alert, LogEntry, Uplink } from "./Common";
-import type { TutorialState } from "./Objective";
+import type { QuestState } from "./Quest";
 import type { MilestoneState } from "./Milestone";
 import type { WorldState } from "./World";
 import type { IpamState } from "./Ipam";
@@ -35,7 +35,7 @@ export interface GameState {
   monthlyExpenses: number;
   monthlyRevenue: number;
 
-  tutorial: TutorialState;
+  quests: QuestState;
   progression: MilestoneState;
 
   world: WorldState;

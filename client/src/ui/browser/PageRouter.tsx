@@ -11,6 +11,7 @@ import { ErrorPage } from "./pages/ErrorPage";
 import { ShopPage } from "./pages/ShopPage";
 import { DocsPage } from "./pages/DocsPage";
 import { IpamPage } from "./pages/IpamPage";
+import { ClientPanel } from "../panels/ClientPanel";
 import { THEME } from "../theme";
 
 export function PageRouter() {
@@ -50,6 +51,9 @@ function renderRoute(route: BrowserRoute, state: GameState) {
 
     case "shop":
       return <ShopPage />;
+
+    case "clients":
+      return <ClientPanel />;
 
     case "docs":
       return <DocsPage article={route.article} />;

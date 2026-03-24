@@ -36,7 +36,7 @@ import {
   startTracer as startTracerSim,
   stepTracer as stepTracerSim,
 } from "./simulation/tracer";
-import { createInitialTutorial } from "./simulation/objectives";
+import { createInitialQuests } from "./simulation/quests";
 import { createInitialMilestones } from "./simulation/milestones";
 import { createInitialWorld } from "./world/worldFactory";
 import {
@@ -90,6 +90,7 @@ export type Action =
   | { type: "DELETE_SUBNET"; subnetId: string }
   | { type: "ALLOCATE_IP"; subnetId: string; ip: string; deviceId: string | null; description: string }
   | { type: "RELEASE_IP"; subnetId: string; ip: string }
+  | { type: "CONNECT_UPLINK"; deviceId: string; portIndex: number }
   | { type: "TICK" }
   | WorldAction;
 
@@ -171,7 +172,7 @@ export function createInitialState(): GameState {
     monthlyExpenses: 0,
     monthlyRevenue: 0,
 
-    tutorial: createInitialTutorial(),
+    quests: createInitialQuests(),
     progression: createInitialMilestones(),
 
     world: createInitialWorld(),
@@ -241,6 +242,8 @@ export function applyAction(state: GameState, action: Action): EngineResult {
       return allocateIp(state, action.subnetId, action.ip, action.deviceId, action.description);
     case "RELEASE_IP":
       return releaseIp(state, action.subnetId, action.ip);
+    case "CONNECT_UPLINK":
+      return connectUplink(state, action.deviceId, action.portIndex);
     case "TICK":
       return { state: processTick(state) };
 
@@ -427,22 +430,6 @@ function placeDevice(
     newRackDevices[u] = device;
   }
 
-  // Auto-assign uplink to first router placed
-  let newUplinks = state.uplinks;
-  if (template.type === "router") {
-    const hasRouter = Object.values(state.devices).some(
-      (d) => d.type === "router",
-    );
-    if (!hasRouter && state.uplinks.length > 0) {
-      const uplinkPortIndex = ports.length - 1; // last port
-      newUplinks = state.uplinks.map((u, i) =>
-        i === 0
-          ? { ...u, deviceId: deviceId, portIndex: uplinkPortIndex }
-          : u,
-      );
-    }
-  }
-
   const newState: GameState = {
     ...state,
     money: skipCost ? state.money : state.money - template.cost,
@@ -455,7 +442,6 @@ function placeDevice(
         currentPowerWatts: rack.currentPowerWatts + template.powerDrawWatts,
       },
     },
-    uplinks: newUplinks,
     log: [
       ...state.log,
       {
@@ -823,31 +809,20 @@ function repairPort(
   // Try to re-establish connections
   newState = reestablishConnections(newState);
 
-  // Mark survive_incident objective if tutorial is active and we have active clients
-  if (!newState.tutorial.tutorialComplete) {
-    const hasActiveClients = Object.values(newState.clients).some(
-      (c) => c.status === "active" || c.status === "warning",
+  // Mark first_incident_resolved milestone if we have active clients
+  const hasActiveClients = Object.values(newState.clients).some(
+    (c) => c.status === "active" || c.status === "warning",
+  );
+  if (hasActiveClients) {
+    const milestones = newState.progression.milestones.map((m) =>
+      m.id === "first_incident_resolved" && !m.completed
+        ? { ...m, completed: true, completedAtTick: newState.tick }
+        : m,
     );
-    if (hasActiveClients) {
-      const objectives = newState.tutorial.objectives.map((o) =>
-        o.id === "survive_incident" && !o.completed
-          ? { ...o, completed: true, completedAtTick: newState.tick }
-          : o,
-      );
-      const currentObjectiveIndex = objectives.findIndex(
-        (o) => !o.completed,
-      );
+    if (milestones !== newState.progression.milestones) {
       newState = {
         ...newState,
-        tutorial: {
-          ...newState.tutorial,
-          objectives,
-          currentObjectiveIndex:
-            currentObjectiveIndex === -1
-              ? objectives.length - 1
-              : currentObjectiveIndex,
-          tutorialComplete: objectives.every((o) => o.completed),
-        },
+        progression: { ...newState.progression, milestones },
       };
     }
   }
@@ -855,11 +830,127 @@ function repairPort(
   return { state: newState };
 }
 
+function connectUplink(state: GameState, deviceId: string, portIndex: number): EngineResult {
+  const device = state.devices[deviceId];
+  if (!device) return { state, error: "Device not found" };
+  if (device.type !== "router") return { state, error: "Only routers can connect to an uplink" };
+  if (portIndex !== 0) return { state, error: "Uplink must connect to WAN port (port 0)" };
+
+  const port = device.ports[portIndex];
+  if (!port) return { state, error: "Port not found" };
+  if (port.linkId) return { state, error: "Port is already connected" };
+
+  // Find first unconnected uplink
+  const uplinkIndex = state.uplinks.findIndex(
+    (u) => u.status === "active" && (u.deviceId === "" || u.deviceId === "device-isp-demarc"),
+  );
+  if (uplinkIndex === -1) return { state, error: "No available uplink" };
+
+  const uplink = state.uplinks[uplinkIndex];
+
+  // Ensure ISP demarc device exists
+  let devices = state.devices;
+  const demarcId = "device-isp-demarc";
+  if (!devices[demarcId]) {
+    devices = {
+      ...devices,
+      [demarcId]: {
+        id: demarcId,
+        type: "patch_panel",
+        name: "ISP Alpha - Wall Jack",
+        model: "isp_demarc",
+        uHeight: 0,
+        rackId: "",
+        slotU: -1,
+        powerDrawWatts: 0,
+        heatOutput: 0,
+        status: "online",
+        ports: [{
+          id: `${demarcId}-p0`, deviceId: demarcId, index: 0, type: "copper_1g",
+          status: "up", linkId: null, speed: 1000,
+          vlanMode: "access", accessVlan: 1, trunkAllowedVlans: [],
+          txBps: 0, rxBps: 0, txErrors: 0, rxErrors: 0,
+        }],
+        health: 100,
+        config: {},
+      } satisfies Device,
+    };
+  }
+
+  const demarcDevice = devices[demarcId];
+  const demarcPort = demarcDevice.ports[0];
+  if (demarcPort.linkId) return { state, error: "ISP demarc port is already connected" };
+
+  // Create link between demarc port 0 and router WAN port 0
+  const linkId = genId("link");
+  const link: Link = {
+    id: linkId,
+    type: "cat6",
+    portA: { deviceId: demarcId, portIndex: 0 },
+    portB: { deviceId: deviceId, portIndex: 0 },
+    maxBandwidthMbps: Math.min(uplink.bandwidthMbps, port.speed),
+    currentLoadMbps: 0,
+    activeConnectionIds: [],
+    status: "active",
+    lengthMeters: 5,
+  };
+
+  // Update ports with linkId
+  const updatedDemarc: Device = {
+    ...demarcDevice,
+    ports: demarcDevice.ports.map((p, i) =>
+      i === 0 ? { ...p, linkId } : p,
+    ),
+  };
+
+  const updatedRouter: Device = {
+    ...device,
+    ports: device.ports.map((p, i) =>
+      i === portIndex ? { ...p, linkId } : p,
+    ),
+  };
+
+  // Update uplink to point to the router
+  const newUplinks = state.uplinks.map((u, i) =>
+    i === uplinkIndex ? { ...u, deviceId: deviceId, portIndex: 0 } : u,
+  );
+
+  return {
+    state: {
+      ...state,
+      devices: {
+        ...devices,
+        [demarcId]: updatedDemarc,
+        [deviceId]: updatedRouter,
+      },
+      links: { ...state.links, [linkId]: link },
+      uplinks: newUplinks,
+      log: [
+        ...state.log,
+        {
+          id: genId("log"),
+          tick: state.tick,
+          message: `Connected ISP uplink (${uplink.name}) to ${device.name} WAN port`,
+          category: "network",
+        },
+      ],
+    },
+  };
+}
+
 function acceptClient(state: GameState, clientId: string): EngineResult {
   const client = state.clients[clientId];
   if (!client) return { state, error: "Client not found" };
   if (client.status !== "prospect") {
     return { state, error: "Client is not a prospect" };
+  }
+
+  // Require an active uplink connected to a router
+  const hasActiveUplink = state.uplinks.some(
+    (u) => u.status === "active" && u.deviceId !== "" && u.deviceId !== "device-isp-demarc",
+  );
+  if (!hasActiveUplink) {
+    return { state, error: "No active internet uplink connected. Connect the ISP cable to your router's WAN port first." };
   }
 
   let newState: GameState = {

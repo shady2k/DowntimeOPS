@@ -8,6 +8,7 @@ export type BrowserRoute =
   | { type: "console"; deviceId: string; subpage?: string }
   | { type: "device"; ip: string; deviceId: string; subpage?: string }
   | { type: "shop" }
+  | { type: "clients" }
   | { type: "ipam"; subpage?: string }
   | { type: "docs"; article?: string }
   | { type: "error"; code: "not_found" | "unreachable" | "no_ip"; message: string };
@@ -27,6 +28,8 @@ function routeToDisplayUrl(route: BrowserRoute): string {
       return `http://${route.ip}${route.subpage ? `/${route.subpage}` : ""}`;
     case "shop":
       return "https://datacenter-supply.net/shop";
+    case "clients":
+      return "clients://contracts";
     case "ipam":
       return `ipam://${route.subpage || ""}`;
     case "docs":
@@ -68,6 +71,7 @@ export { ZOOM_STEPS };
 
 const DEFAULT_BOOKMARKS: Bookmark[] = [
   { label: "Shop", route: { type: "shop" } },
+  { label: "Clients", route: { type: "clients" } },
   { label: "IPAM", route: { type: "ipam" } },
   { label: "Docs", route: { type: "docs" } },
 ];

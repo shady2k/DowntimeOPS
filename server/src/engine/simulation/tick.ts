@@ -8,7 +8,7 @@ import {
 } from "./connectionEngine";
 import { processEconomyTick } from "./economy";
 import { checkSla } from "./sla";
-import { evaluateObjectives } from "./objectives";
+import { evaluateQuests } from "./quests";
 import { evaluateMilestones } from "./milestones";
 import { generateProspect, shouldGenerateProspect } from "../config/clients";
 
@@ -33,10 +33,10 @@ export function processTick(state: GameState): GameState {
   // SLA checks
   next = checkSla(next);
 
-  // Evaluate tutorial objectives
-  next = evaluateObjectives(next);
+  // Evaluate quests
+  next = evaluateQuests(next);
 
-  // Evaluate milestones (after objectives so survive_incident is tracked)
+  // Evaluate milestones
   next = evaluateMilestones(next);
 
   // Client prospect generation
@@ -53,7 +53,7 @@ export function processTick(state: GameState): GameState {
 
 function generateClientsIfDue(state: GameState): GameState {
   // Don't generate random prospects until tutorial starter client is resolved
-  if (!state.tutorial.firstClientActivated) return state;
+  if (!state.quests.firstClientActivated) return state;
 
   const prospectCount = Object.values(state.clients).filter(
     (c) => c.status === "prospect",
