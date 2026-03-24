@@ -1,9 +1,11 @@
 import Phaser from "phaser";
 import { useGameStore } from "../../store/gameStore";
+import { useBrowserStore } from "../../ui/browser/browserStore";
 
 /**
  * QuestTrackerScene — always-on-top quest HUD overlay.
  * Renders in bottom-right corner, visible in both world and rack views.
+ * Hides when browser is open to avoid click conflicts.
  */
 export class QuestTrackerScene extends Phaser.Scene {
   private questBg!: Phaser.GameObjects.Rectangle;
@@ -13,6 +15,7 @@ export class QuestTrackerScene extends Phaser.Scene {
   private questProgress!: Phaser.GameObjects.Text;
 
   private unsubscribe?: () => void;
+  private _unsubBrowser?: () => void;
 
   constructor() {
     super({ key: "QuestTrackerScene" });
@@ -65,14 +68,23 @@ export class QuestTrackerScene extends Phaser.Scene {
     }).setResolution(dpr);
 
     this.unsubscribe = useGameStore.subscribe(() => this.updateTracker());
+    this._unsubBrowser = useBrowserStore.subscribe(() => this.updateTracker());
     this.updateTracker();
   }
 
   private updateTracker() {
     const state = useGameStore.getState().state;
+    const browserOpen = useBrowserStore.getState().open;
     if (!state) return;
 
-    const quest = state.quests?.quests?.first_contract;
+    // Hide when browser is open to prevent click conflicts
+    if (browserOpen) {
+      this.setAllVisible(false);
+      return;
+    }
+
+    const activeId = state.quests?.activeQuestId;
+    const quest = activeId ? state.quests?.quests?.[activeId] : null;
     if (quest && quest.status === "active") {
       const step = quest.steps[quest.currentStepIndex];
       const done = quest.steps.filter((s) => s.completed).length;
@@ -83,15 +95,20 @@ export class QuestTrackerScene extends Phaser.Scene {
       this.questHint.setText(step?.hint || "").setVisible(true);
       this.questStep.setText(step?.title || "").setVisible(true);
     } else {
-      this.questBg.setVisible(false);
-      this.questTitle.setVisible(false);
-      this.questProgress.setVisible(false);
-      this.questHint.setVisible(false);
-      this.questStep.setVisible(false);
+      this.setAllVisible(false);
     }
+  }
+
+  private setAllVisible(visible: boolean) {
+    this.questBg.setVisible(visible);
+    this.questTitle.setVisible(visible);
+    this.questProgress.setVisible(visible);
+    this.questHint.setVisible(visible);
+    this.questStep.setVisible(visible);
   }
 
   destroy() {
     this.unsubscribe?.();
+    this._unsubBrowser?.();
   }
 }

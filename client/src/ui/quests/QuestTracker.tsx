@@ -1,16 +1,19 @@
 import { useState } from "react";
 import { useGameStore } from "../../store/gameStore";
+import { useBrowserStore } from "../../ui/browser/browserStore";
 import { THEME } from "../theme";
 import { QuestDetailModal } from "./QuestDetailModal";
 
 export function QuestTracker() {
   const quests = useGameStore((s) => s.state?.quests);
   const activeView = useGameStore((s) => s.activeView);
+  const browserOpen = useBrowserStore((s) => s.open);
   const [modalOpen, setModalOpen] = useState(false);
 
   if (!quests || !quests.activeQuestId) return null;
-  // Hide during rack view to avoid clutter
+  // Hide during rack view or when browser is open to avoid click conflicts
   if (activeView === "rack") return null;
+  if (browserOpen) return null;
 
   const quest = quests.quests[quests.activeQuestId];
   if (!quest) return null;
