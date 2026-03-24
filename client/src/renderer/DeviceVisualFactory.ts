@@ -94,10 +94,10 @@ const DEVICE_FACE_GEOMETRY: Record<string, DeviceFaceGeometry> = {
   },
   server_1u: {
     statusLed: { x: normX(82), y: normY(9) },
-    // Servers don't have front-panel console ports (use IPMI/network)
+    // 2× RJ45 NIC ports at x=172 and x=190, same size as router/firewall ports (16×10)
     ports: [
-      { x: normX(179), y: normY(6), ledX: normX(178), ledY: normY(6), actLedX: normX(180), actLedY: normY(6) },
-      { x: normX(184), y: normY(6), ledX: normX(183), ledY: normY(6), actLedX: normX(185), actLedY: normY(6) },
+      { x: normX(180), y: normY(9), ledX: normX(178), ledY: normY(4.8), actLedX: normX(182), actLedY: normY(4.8) },
+      { x: normX(198), y: normY(9), ledX: normX(196), ledY: normY(4.8), actLedX: normX(200), actLedY: normY(4.8) },
     ],
   },
 };

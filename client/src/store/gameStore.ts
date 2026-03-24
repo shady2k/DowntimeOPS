@@ -61,6 +61,10 @@ export interface GameStore {
   questDetailOpen: boolean;
   openQuestDetail: () => void;
   closeQuestDetail: () => void;
+
+  // Debug
+  debugMode: boolean;
+  toggleDebugMode: () => void;
 }
 
 export const useGameStore = create<GameStore>((set) => ({
@@ -161,4 +165,8 @@ export const useGameStore = create<GameStore>((set) => ({
   questDetailOpen: false,
   openQuestDetail: () => set({ questDetailOpen: true }),
   closeQuestDetail: () => set({ questDetailOpen: false }),
+
+  // Debug
+  debugMode: false,
+  toggleDebugMode: () => set((s) => ({ debugMode: !s.debugMode })),
 }));

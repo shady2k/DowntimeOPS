@@ -112,7 +112,7 @@ export interface DropItemParams {
 
 export interface PlaceRackParams {
   itemId: string;
-  zoneId: string;
+  slotIndex: number;
 }
 
 export interface InstallDeviceWorldParams {

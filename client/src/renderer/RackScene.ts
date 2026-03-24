@@ -131,6 +131,7 @@ export class RackScene extends Phaser.Scene {
   private tooltip: Phaser.GameObjects.Container | null = null;
   private portTooltip: Phaser.GameObjects.Container | null = null;
   private lastHoveredPortKey = "";
+  private hoveredDeviceId: string | null = null;
   private rackTitle: Phaser.GameObjects.Text | null = null;
 
 
@@ -269,6 +270,7 @@ export class RackScene extends Phaser.Scene {
     });
 
     // Initial render
+    this.updateRackTitle();
     const store = useGameStore.getState();
     if (store.state) {
       this.renderAll(store.state, store);
@@ -428,21 +430,26 @@ export class RackScene extends Phaser.Scene {
         this.rackCam.scrollY = clamped.scrollY;
       }
 
-      // Port hover tooltip
-      const hitPort = this.findPortAtWorld(worldPoint.x, worldPoint.y);
-      const portKey = hitPort ? `${hitPort.deviceId}:${hitPort.portIndex}` : "";
-      if (portKey !== this.lastHoveredPortKey) {
-        this.lastHoveredPortKey = portKey;
-        this.hidePortTooltip();
-        if (hitPort) {
-          const state = useGameStore.getState().state;
-          if (state) {
-            const device = state.devices[hitPort.deviceId];
-            if (device) {
-              this.showPortTooltip(device, device.ports[hitPort.portIndex], hitPort.portIndex, hitPort.worldX, hitPort.worldY, state);
+      // Port hover tooltip — only in close-up mode
+      if (this.isCloseUp()) {
+        const hitPort = this.findPortAtWorld(worldPoint.x, worldPoint.y);
+        const portKey = hitPort ? `${hitPort.deviceId}:${hitPort.portIndex}` : "";
+        if (portKey !== this.lastHoveredPortKey) {
+          this.lastHoveredPortKey = portKey;
+          this.hidePortTooltip();
+          if (hitPort) {
+            const state = useGameStore.getState().state;
+            if (state) {
+              const device = state.devices[hitPort.deviceId];
+              if (device) {
+                this.showPortTooltip(device, device.ports[hitPort.portIndex], hitPort.portIndex, hitPort.worldX, hitPort.worldY, state);
+              }
             }
           }
         }
+      } else if (this.lastHoveredPortKey) {
+        this.lastHoveredPortKey = "";
+        this.hidePortTooltip();
       }
     });
 
@@ -1181,7 +1188,7 @@ export class RackScene extends Phaser.Scene {
     }
     this.consoleHitZones = [];
 
-    // Destroy tooltip
+    // Destroy tooltip (will re-show after rebuild if device still hovered)
     this.tooltip?.destroy();
     this.tooltip = null;
 
@@ -1219,6 +1226,15 @@ export class RackScene extends Phaser.Scene {
         device, state, selected, highlighted, store,
       );
       this.deviceVisuals.set(device.id, visual);
+    }
+
+    // Re-show device tooltip if a device was hovered before rebuild
+    if (this.hoveredDeviceId && rackDevices[this.hoveredDeviceId]) {
+      const device = rackDevices[this.hoveredDeviceId];
+      const x = this.deviceX();
+      const y = this.slotY(device.slotU) + 1;
+      const w = this.rl.bayWidth - 4;
+      this.showTooltip(device, state, x + w + 8, y);
     }
   }
 
@@ -1314,9 +1330,11 @@ export class RackScene extends Phaser.Scene {
     });
 
     hitZone.on("pointerover", () => {
+      this.hoveredDeviceId = device.id;
       this.showTooltip(device, state, x + w + 8, y);
     });
     hitZone.on("pointerout", () => {
+      this.hoveredDeviceId = null;
       this.hideTooltip();
     });
 
@@ -1346,20 +1364,15 @@ export class RackScene extends Phaser.Scene {
       `Ports: ${connectedPorts}/${device.ports.length} connected`,
     ];
 
-    const padding = 6;
-    const lineHeight = 12;
-    const textWidth = 120;
+    // Tooltip is inverse-scaled so content sizes are in screen pixels
+    const invZoom = 1 / this.rackCam.zoom;
+    const padding = 10;
+    const lineHeight = 20;
     const bgHeight = lines.length * lineHeight + padding * 2;
 
-    const container = this.add.container(x, y).setDepth(DEPTH.TOOLTIPS);
-
-    const bg = this.add.graphics();
-    bg.fillStyle(0x302820, 0.95);
-    bg.fillRoundedRect(0, 0, textWidth + padding * 2, bgHeight, 4);
-    bg.lineStyle(1, 0x5a4e40, 0.8);
-    bg.strokeRoundedRect(0, 0, textWidth + padding * 2, bgHeight, 4);
-    container.add(bg);
-
+    // Create text objects first to measure max width
+    const textObjs: Phaser.GameObjects.Text[] = [];
+    let maxTextW = 0;
     for (let i = 0; i < lines.length; i++) {
       const isTitle = i === 0;
       const text = this.add.text(
@@ -1367,12 +1380,29 @@ export class RackScene extends Phaser.Scene {
         padding + i * lineHeight,
         lines[i],
         {
-          fontSize: isTitle ? "8px" : "7px",
+          fontSize: isTitle ? "14px" : "12px",
           color: isTitle ? TEXT_COLORS.primary : TEXT_COLORS.muted,
           fontFamily: isTitle ? "'Nunito', sans-serif" : "'JetBrains Mono', monospace",
           fontStyle: isTitle ? "bold" : "normal",
         },
       );
+      textObjs.push(text);
+      maxTextW = Math.max(maxTextW, text.width);
+    }
+
+    const bgWidth = maxTextW + padding * 2;
+
+    const container = this.add.container(x, y).setDepth(DEPTH.TOOLTIPS);
+    container.setScale(invZoom);
+
+    const bg = this.add.graphics();
+    bg.fillStyle(0x302820, 0.95);
+    bg.fillRoundedRect(0, 0, bgWidth, bgHeight, 4);
+    bg.lineStyle(1, 0x5a4e40, 0.8);
+    bg.strokeRoundedRect(0, 0, bgWidth, bgHeight, 4);
+    container.add(bg);
+
+    for (const text of textObjs) {
       container.add(text);
     }
 
@@ -1425,22 +1455,15 @@ export class RackScene extends Phaser.Scene {
       }
     }
 
-    const padding = 5;
-    const lineHeight = 11;
-    const textWidth = 130;
+    // Tooltip is inverse-scaled so content sizes are in screen pixels
+    const invZoom = 1 / this.rackCam.zoom;
+    const padding = 10;
+    const lineHeight = 20;
     const bgHeight = lines.length * lineHeight + padding * 2;
-    const tipX = worldX + 4;
-    const tipY = worldY - bgHeight - 4;
 
-    const container = this.add.container(tipX, tipY).setDepth(DEPTH.TOOLTIPS);
-
-    const bg = this.add.graphics();
-    bg.fillStyle(0x302820, 0.95);
-    bg.fillRoundedRect(0, 0, textWidth + padding * 2, bgHeight, 3);
-    bg.lineStyle(1, 0x5a4e40, 0.8);
-    bg.strokeRoundedRect(0, 0, textWidth + padding * 2, bgHeight, 3);
-    container.add(bg);
-
+    // Create text objects first to measure max width
+    const textObjs: Phaser.GameObjects.Text[] = [];
+    let maxTextW = 0;
     for (let i = 0; i < lines.length; i++) {
       const isTitle = i === 0;
       const isAction = i === lines.length - 1 && (lines[i].startsWith("Click"));
@@ -1449,12 +1472,33 @@ export class RackScene extends Phaser.Scene {
         padding + i * lineHeight,
         lines[i],
         {
-          fontSize: isTitle ? "8px" : "7px",
+          fontSize: isTitle ? "14px" : "12px",
           color: isAction ? "#e8a840" : isTitle ? TEXT_COLORS.primary : TEXT_COLORS.muted,
           fontFamily: isTitle ? "'Nunito', sans-serif" : "'JetBrains Mono', monospace",
           fontStyle: isTitle ? "bold" : "normal",
         },
       );
+      textObjs.push(text);
+      maxTextW = Math.max(maxTextW, text.width);
+    }
+
+    const bgWidth = maxTextW + padding * 2;
+
+    // Offset in world space: small gap next to port, then shift up by scaled tooltip height
+    const tipX = worldX + 4;
+    const tipY = worldY - bgHeight * invZoom - 2;
+
+    const container = this.add.container(tipX, tipY).setDepth(DEPTH.TOOLTIPS);
+    container.setScale(invZoom);
+
+    const bg = this.add.graphics();
+    bg.fillStyle(0x302820, 0.95);
+    bg.fillRoundedRect(0, 0, bgWidth, bgHeight, 4);
+    bg.lineStyle(1, 0x5a4e40, 0.8);
+    bg.strokeRoundedRect(0, 0, bgWidth, bgHeight, 4);
+    container.add(bg);
+
+    for (const text of textObjs) {
       container.add(text);
     }
 
@@ -1727,8 +1771,20 @@ export class RackScene extends Phaser.Scene {
       }
     }
 
-    for (const link of Object.values(state.links)) {
-      this.renderSingleCable(state, link, highlightedLinkIds.has(link.id));
+    // Collect links from this rack's devices' ports
+    const rackDevices = this.getRackDevices(state);
+    const rackLinkIds = new Set<string>();
+    for (const device of Object.values(rackDevices)) {
+      for (const port of device.ports) {
+        if (port.linkId) rackLinkIds.add(port.linkId);
+      }
+    }
+
+    for (const linkId of rackLinkIds) {
+      const link = state.links[linkId];
+      if (link) {
+        this.renderSingleCable(state, link, highlightedLinkIds.has(link.id));
+      }
     }
   }
 

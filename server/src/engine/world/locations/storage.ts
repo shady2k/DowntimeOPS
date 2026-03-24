@@ -38,6 +38,7 @@ export function createStorageRoom(): Room {
       "from-yard": tileToPixel(L.width - 2, L.height / 2),
       default: tileToPixel(L.width / 2, L.height / 2),
     },
+    maxRacks: 0,
     placementZones: shelves,
     interactables: {},
   };

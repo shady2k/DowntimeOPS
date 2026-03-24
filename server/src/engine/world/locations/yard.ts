@@ -27,6 +27,7 @@ export function createYardRoom(): Room {
       "from-datacenter": tileToPixel(DC_DOOR_X, L.height / 2),
       default: tileToPixel(L.width / 2, L.height / 2),
     },
+    maxRacks: 0,
     placementZones: {},
     interactables: {
       "door-to-storage": {

@@ -20,6 +20,7 @@ export function createCheckpointRoom(): Room {
     spawnPoints: {
       default: tileToPixel(L.width / 2, L.height - 3),
     },
+    maxRacks: 0,
     placementZones: {},
     interactables: {
       "door-to-yard": {

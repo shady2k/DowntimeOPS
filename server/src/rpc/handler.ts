@@ -217,7 +217,7 @@ export function handleRpcRequest(
         return handleAction(server, id, {
           type: "PLACE_RACK",
           itemId: (params as Record<string, unknown>).itemId as string,
-          zoneId: (params as Record<string, unknown>).zoneId as string,
+          slotIndex: (params as Record<string, unknown>).slotIndex as number,
         });
 
       case "installDevice":

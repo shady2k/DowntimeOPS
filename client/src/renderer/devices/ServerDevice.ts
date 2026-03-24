@@ -2,11 +2,11 @@
  * SRV-1U — 1U rack server faceplate.
  *
  * Front panel: power button, 2× hot-swap 2.5" drive bays, USB-A,
- * 3-dot system health LED cluster (SYS/NIC/HDD), chassis vents.
+ * 2× RJ45 ethernet ports (NIC0/NIC1), chassis vents.
  * Phaser key: "device-server" | JSON: device-server-1u.json
  */
 
-import { label, usb, vents, svgDoc } from "./DeviceBuilder";
+import { label, rj45, usb, vents, svgDoc } from "./DeviceBuilder";
 
 function powerButton(cx: number, cy: number): string {
   return `
@@ -27,12 +27,11 @@ function driveBay(x: number): string {
 
 export function buildServerSvg(): string {
   const usbX = 158;
-  const hlX = 174;
-
-  const healthLeds = `
-    <circle cx="${hlX}" cy="6" r="1.2" fill="#081408"/>
-    <circle cx="${hlX + 5}" cy="6" r="1.2" fill="#0a1008"/>
-    <circle cx="${hlX + 10}" cy="6" r="1.2" fill="#0a1008"/>`;
+  const nic0X = 172;
+  const nic1X = 190;
+  const portW = 16;
+  const portH = 10;
+  const portY = 4;
 
   const content = `
   ${label('SRV-1U', '#5a9a6a')}
@@ -40,8 +39,9 @@ export function buildServerSvg(): string {
   ${driveBay(94)}
   ${driveBay(121)}
   ${usb(usbX, 5)}
-  ${healthLeds}
-  ${vents(192, 213)}`;
+  ${rj45(nic0X, portY, portW, portH)}
+  ${rj45(nic1X, portY, portW, portH)}
+  ${vents(210, 195)}`;
 
   return svgDoc('#132016', content);
 }

@@ -46,6 +46,8 @@ export interface Room {
   spawnPoints: Record<string, Vec2>;
   placementZones: Record<string, PlacementZone>;
   interactables: Record<InteractableId, Interactable>;
+  /** Maximum number of racks that can be placed in this room */
+  maxRacks: number;
   /** Auto-transition at screen edges */
   edgeExits?: {
     left?: EdgeExit;
@@ -55,7 +57,7 @@ export interface Room {
 
 // --- Placement zones (where racks/items can be placed on the floor) ---
 
-export type PlacementKind = "rack_slot" | "floor_item" | "storage_shelf";
+export type PlacementKind = "floor_item" | "storage_shelf";
 
 export interface PlacementZone {
   id: string;
@@ -121,6 +123,8 @@ export interface ItemInstance {
   installedInRackId: string | null;
   /** For installed devices: which U slot */
   installedAtSlotU: number | null;
+  /** For placed racks: which visual slot index (0-based) */
+  rackSlotIndex: number | null;
 }
 
 // --- Shop ---

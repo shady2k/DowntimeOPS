@@ -5,6 +5,9 @@ import { useBrowserStore } from "../../ui/browser/browserStore";
 import { rpcClient } from "../../rpc/client";
 import { AssetRegistry } from "../../assets/AssetRegistry";
 import type { BackgroundDescriptor } from "../../assets/AssetDescriptors";
+import { getDeviceFaceGeometry } from "../../renderer/DeviceVisualFactory";
+import { drawCablePath, getCableStyle } from "../../renderer/CablePrefab";
+import { PALETTE } from "../../renderer/TextureGenerator";
 
 /**
  * Side-view explorable world scene.
@@ -67,6 +70,9 @@ export class WorldScene extends Phaser.Scene {
   private static readonly HOLD_DURATION = 600; // ms to hold E
   private static readonly TAP_THRESHOLD = 200; // max ms for a tap
 
+  // Debug overlay
+  private debugGfx: Phaser.GameObjects.Graphics | null = null;
+
   // Sync
   private lastSyncTime = 0;
   private unsubscribe?: () => void;
@@ -114,6 +120,11 @@ export class WorldScene extends Phaser.Scene {
       D: this.input.keyboard!.addKey(Phaser.Input.Keyboard.KeyCodes.D),
     };
     this.interactKey = this.input.keyboard!.addKey(Phaser.Input.Keyboard.KeyCodes.E);
+
+    // F1 toggles global debug mode
+    this.input.keyboard!.addKey(Phaser.Input.Keyboard.KeyCodes.F1).on("down", () => {
+      useGameStore.getState().toggleDebugMode();
+    });
 
     // Interaction prompt — fixed at bottom center
     this.promptText = this.add.text(GAME_W / 2, GAME_H - 40, "", {
@@ -196,31 +207,41 @@ export class WorldScene extends Phaser.Scene {
     this.syncWorldItems(world);
   }
 
+  private getOccupiedRackSlots(world: WorldState): Set<number> {
+    const occupied = new Set<number>();
+    for (const item of Object.values(world.items)) {
+      if (item.kind === "rack" && item.roomId === this.currentRoom && item.rackSlotIndex !== null) {
+        occupied.add(item.rackSlotIndex);
+      }
+    }
+    return occupied;
+  }
+
   private drawPlacementZones(world: WorldState) {
     const room = world.rooms[this.currentRoom];
     if (!room) return;
 
-    const roomWidthPx = room.widthTiles * 32;
-    const roomHeightPx = room.heightTiles * 32;
+    const desc = AssetRegistry.getBackground(`bg-${room.kind}`);
+    if (!desc?.rackSlots) return;
 
-    for (const zone of Object.values(room.placementZones)) {
-      if (zone.kind !== "rack_slot") continue;
-      if (zone.occupiedByItemId) continue; // don't draw under placed racks
+    const occupied = this.getOccupiedRackSlots(world);
 
-      const screenX = (zone.position.x / roomWidthPx) * GAME_W;
-      const screenY = (zone.position.y / roomHeightPx) * GAME_H;
-      const zoneW = (zone.size.w / roomWidthPx) * GAME_W;
-      const zoneH = (zone.size.h / roomHeightPx) * GAME_H;
+    for (let i = 0; i < desc.rackSlots.length; i++) {
+      if (occupied.has(i)) continue;
+
+      const slot = desc.rackSlots[i];
+      const screenX = slot.x * GAME_W;
+      const screenY = slot.y * GAME_H;
+      // Use rack aspect ratio for the dashed outline
+      const rackH = slot.height;
+      const rackW = Math.round(rackH * 0.4); // approximate rack aspect ratio
 
       const g = this.add.graphics();
       g.lineStyle(1, 0x4a6a8a, 0.4);
 
-      // Draw dashed rectangle outline
-      const x1 = screenX - zoneW / 2;
-      const y1 = screenY - zoneH / 2;
-      const dashLen = 6;
-      const gapLen = 4;
-      this.drawDashedRect(g, x1, y1, zoneW, zoneH, dashLen, gapLen);
+      const x1 = screenX - rackW / 2;
+      const y1 = screenY - rackH;
+      this.drawDashedRect(g, x1, y1, rackW, rackH, 6, 4);
 
       g.setDepth(5);
       this.roomObjects.push(g);
@@ -350,29 +371,42 @@ export class WorldScene extends Phaser.Scene {
       // For in_storage items, only show if we're in the storage room
       if (item.state === "in_storage") {
         if (this.currentRoom !== "storage") continue;
+      } else if (item.kind === "rack" && item.rackSlotIndex !== null) {
+        if (item.roomId !== this.currentRoom) continue;
       } else {
         if (item.roomId !== this.currentRoom) continue;
         if (!item.position) continue;
       }
 
       let container = this.itemSprites.get(itemId);
+      // Recreate rack sprites each sync so installed devices stay up to date
+      if (container && item.kind === "rack") {
+        container.destroy();
+        container = undefined;
+        this.itemSprites.delete(itemId);
+      }
       if (!container) {
         container = this.createItemSprite(item);
         this.itemSprites.set(itemId, container);
       }
 
-      // Position based on placement zone
-      if (room) {
+      // Position items
+      if (item.kind === "rack" && item.rackSlotIndex !== null) {
+        // Rack position from background descriptor
+        const bgDesc = AssetRegistry.getBackground(`bg-${room?.kind}`);
+        const slot = bgDesc?.rackSlots?.[item.rackSlotIndex];
+        if (slot) {
+          const screenX = slot.x * GAME_W;
+          const screenY = slot.y * GAME_H;
+          container.setPosition(screenX, screenY - slot.height / 2);
+        }
+      } else if (room) {
+        // Storage items positioned by placement zone
         for (const zone of Object.values(room.placementZones)) {
           if (zone.occupiedByItemId === itemId) {
             const roomWidthPx = room.widthTiles * 32;
-            const roomHeightPx = room.heightTiles * 32;
             const screenX = (zone.position.x / roomWidthPx) * GAME_W;
-            if (item.kind === "rack") {
-              // Map zone Y to screen Y — racks sit against the wall
-              const screenY = (zone.position.y / roomHeightPx) * GAME_H;
-              container.setPosition(screenX, screenY);
-            } else if (item.state === "in_storage") {
+            if (item.state === "in_storage") {
               container.setPosition(screenX, this.getRender().floorY - 40);
             } else {
               container.setPosition(screenX, this.getRender().floorY - 30);
@@ -427,17 +461,143 @@ export class WorldScene extends Phaser.Scene {
     }
 
     if (item.kind === "rack") {
-      const key = this.textures.exists("rack-empty") ? "rack-empty"
-        : this.textures.exists("rack-frame") ? "rack-frame"
-        : "rack-world";
-      if (this.textures.exists(key)) {
-        const sprite = this.add.image(0, 0, key);
-        sprite.setDisplaySize(160, 240);
+      const desc = AssetRegistry.getRack("rack-42u");
+      const textureKey = desc?.textureKey ?? "rack-empty";
+      const totalU = desc?.totalU ?? 42;
+      const bay = desc?.bay ?? { left: 0.203, right: 0.796, top: 0.089, bottom: 0.904 };
+
+      // Derive display size from actual texture aspect ratio
+      const rackH = 240;
+      let rackW = Math.round(rackH * 0.4); // fallback
+      if (this.textures.exists(textureKey)) {
+        const src = this.textures.get(textureKey).getSourceImage() as HTMLImageElement;
+        rackW = Math.round(rackH * (src.width / src.height));
+        const sprite = this.add.image(0, 0, textureKey);
+        sprite.setDisplaySize(rackW, rackH);
         container.add(sprite);
       } else {
-        const body = this.add.rectangle(0, 0, 160, 240, 0x4a4240);
+        const body = this.add.rectangle(0, 0, rackW, rackH, 0x4a4240);
         body.setStrokeStyle(2, 0x6a6058);
         container.add(body);
+      }
+
+      // Render installed devices using actual device textures
+      const rackId = item.installedInRackId;
+      const gameState = useGameStore.getState().state;
+      if (rackId && gameState) {
+        const bayTopPx = rackH * bay.top;
+        const bayBottomPx = rackH * bay.bottom;
+        const bayLeftPx = rackW * bay.left;
+        const bayRightPx = rackW * bay.right;
+        const bayH = bayBottomPx - bayTopPx;
+        const bayW = bayRightPx - bayLeftPx;
+        const uSlotH = bayH / totalU;
+
+        // Build device position map for cable rendering
+        const devPositions: Record<string, { x: number; y: number; w: number; h: number }> = {};
+
+        for (const device of Object.values(gameState.devices)) {
+          if (device.rackId !== rackId) continue;
+          const devY = -rackH / 2 + bayTopPx + (device.slotU - 1) * uSlotH;
+          const devH = device.uHeight * uSlotH;
+          const devX = -rackW / 2 + bayLeftPx;
+          devPositions[device.id] = { x: devX, y: devY, w: bayW, h: devH };
+
+          const devTextureKey = `device-${device.type}`;
+          if (this.textures.exists(devTextureKey)) {
+            const devSprite = this.add.image(devX, devY, devTextureKey);
+            devSprite.setOrigin(0, 0);
+            devSprite.setDisplaySize(bayW, devH);
+            container.add(devSprite);
+          }
+
+          // LEDs
+          const geometry = getDeviceFaceGeometry(device);
+          const ledG = this.add.graphics();
+          const ledR = 0.6; // LED radius at world scale
+
+          // Status LED
+          const sColor = device.status === "online" ? PALETTE.portUp
+            : device.status === "failed" ? PALETTE.portDown
+            : device.status === "degraded" ? PALETTE.portErr
+            : PALETTE.portOff;
+          const sX = devX + geometry.statusLed.x * bayW;
+          const sY = devY + geometry.statusLed.y * devH;
+          if (device.status === "online") {
+            ledG.fillStyle(sColor, 0.08);
+            ledG.fillCircle(sX, sY, ledR * 2);
+          }
+          ledG.fillStyle(sColor, 0.9);
+          ledG.fillCircle(sX, sY, ledR);
+
+          // Port LEDs
+          const maxVisible = Math.min(device.ports.length, geometry.ports.length);
+          for (let i = 0; i < maxVisible; i++) {
+            const port = device.ports[i];
+            const pg = geometry.ports[i];
+            const lx = (pg.ledX ?? pg.x) * bayW + devX;
+            const ly = (pg.ledY ?? pg.y) * devH + devY;
+            const hasLink = !!port.linkId && port.status !== "err_disabled";
+            const link = port.linkId ? gameState.links[port.linkId] : undefined;
+            const hasActivity = !!link && link.currentLoadMbps > 0;
+
+            // Link LED
+            if (hasLink) {
+              ledG.fillStyle(PALETTE.portUp, 0.08);
+              ledG.fillCircle(lx, ly, ledR * 1.5);
+              ledG.fillStyle(PALETTE.portUp, 0.9);
+              ledG.fillCircle(lx, ly, ledR * 0.7);
+            } else if (port.status === "err_disabled") {
+              ledG.fillStyle(PALETTE.portErr, 0.7);
+              ledG.fillCircle(lx, ly, ledR * 0.7);
+            } else {
+              ledG.fillStyle(PALETTE.portOff, 0.3);
+              ledG.fillCircle(lx, ly, ledR * 0.5);
+            }
+
+            // Activity LED
+            const ax = (pg.actLedX ?? pg.x + 0.008) * bayW + devX;
+            const ay = (pg.actLedY ?? pg.y) * devH + devY;
+            if (hasActivity && Math.random() > 0.3) {
+              ledG.fillStyle(PALETTE.portErr, 0.08);
+              ledG.fillCircle(ax, ay, ledR * 1.5);
+              ledG.fillStyle(PALETTE.portErr, 0.9);
+              ledG.fillCircle(ax, ay, ledR * 0.7);
+            } else {
+              ledG.fillStyle(PALETTE.portOff, 0.2);
+              ledG.fillCircle(ax, ay, ledR * 0.5);
+            }
+          }
+          container.add(ledG);
+        }
+
+        // Cables — walk ports of rack devices to find links
+        const cableG = this.add.graphics();
+        const drawnLinks = new Set<string>();
+        for (const device of Object.values(gameState.devices)) {
+          if (device.rackId !== rackId) continue;
+          for (const port of device.ports) {
+            if (!port.linkId || drawnLinks.has(port.linkId)) continue;
+            drawnLinks.add(port.linkId);
+            const link = gameState.links[port.linkId];
+            if (!link) continue;
+            const posA = devPositions[link.portA.deviceId];
+            const posB = devPositions[link.portB.deviceId];
+            if (!posA || !posB) continue;
+            const geoA = getDeviceFaceGeometry(gameState.devices[link.portA.deviceId]);
+            const geoB = getDeviceFaceGeometry(gameState.devices[link.portB.deviceId]);
+            const pgA = geoA.ports[link.portA.portIndex];
+            const pgB = geoB.ports[link.portB.portIndex];
+            if (!pgA || !pgB) continue;
+            const ptA = { x: posA.x + pgA.x * posA.w, y: posA.y + pgA.y * posA.h };
+            const ptB = { x: posB.x + pgB.x * posB.w, y: posB.y + pgB.y * posB.h };
+            const util = link.maxBandwidthMbps > 0 ? link.currentLoadMbps / link.maxBandwidthMbps : 0;
+            const bayRight = -rackW / 2 + bayRightPx;
+            const style = getCableStyle(util, link.status, false, 0, link.type);
+            drawCablePath(cableG, ptA, ptB, bayRight, style);
+          }
+        }
+        container.add(cableG);
       }
     } else if (item.kind === "device") {
       const textureKey = item.model.includes("server") ? "device-server"
@@ -515,10 +675,62 @@ export class WorldScene extends Phaser.Scene {
     this.checkInteractables();
     this.handleInteraction();
     this.syncPositionToServer();
+    this.drawDebugOverlay();
 
     if (this.carriedSprite) {
       this.carriedSprite.setPosition(this.player.x, this.player.y - 50);
     }
+  }
+
+  private drawDebugOverlay() {
+    const debug = useGameStore.getState().debugMode;
+
+    if (!debug) {
+      if (this.debugGfx) {
+        this.debugGfx.destroy();
+        this.debugGfx = null;
+      }
+      return;
+    }
+
+    if (!this.debugGfx) {
+      this.debugGfx = this.add.graphics().setDepth(999);
+    }
+    this.debugGfx.clear();
+
+    const state = useGameStore.getState().state;
+    const room = state?.world?.rooms[this.currentRoom];
+    if (!room) return;
+
+    const bgDesc = AssetRegistry.getBackground(`bg-${room.kind}`);
+    if (!bgDesc?.rackSlots) return;
+
+    const occupied = this.getOccupiedRackSlots(state!.world);
+
+    for (let i = 0; i < bgDesc.rackSlots.length; i++) {
+      const slot = bgDesc.rackSlots[i];
+      const sx = slot.x * GAME_W;
+      const sy = slot.y * GAME_H;
+      const rackH = slot.height;
+      const rackW = Math.round(rackH * 0.4);
+
+      const color = occupied.has(i) ? 0x40c040 : 0x4a90d0;
+      this.debugGfx.lineStyle(2, color, 0.8);
+      this.debugGfx.strokeRect(sx - rackW / 2, sy - rackH, rackW, rackH);
+
+      // Slot index label
+      const label = this.add.text(sx, sy - rackH - 4, `slot ${i}`, {
+        fontSize: "10px",
+        fontFamily: "monospace",
+        color: occupied.has(i) ? "#40c040" : "#4a90d0",
+      }).setOrigin(0.5, 1).setDepth(999);
+      // Clean up labels next frame by adding to a temp list
+      this.time.delayedCall(0, () => label.destroy());
+    }
+
+    // Floor line
+    this.debugGfx.lineStyle(1, 0xff4040, 0.5);
+    this.debugGfx.lineBetween(0, bgDesc.floorY * GAME_H, GAME_W, bgDesc.floorY * GAME_H);
   }
 
   private handleMovement() {
@@ -597,15 +809,18 @@ export class WorldScene extends Phaser.Scene {
       }
     }
 
-    // Check placement zones (when carrying a rack)
+    // Check rack slots from background descriptor (when carrying a rack)
     if (state.world.player.carryingItemId) {
       const carriedItem = state.world.items[state.world.player.carryingItemId];
       if (carriedItem?.kind === "rack") {
-        for (const zone of Object.values(room.placementZones)) {
-          if (zone.kind !== "rack_slot" || zone.occupiedByItemId) continue;
-          const screenX = (zone.position.x / roomWidthPx) * GAME_W;
+        const bgDesc = AssetRegistry.getBackground(`bg-${room.kind}`);
+        const occupied = this.getOccupiedRackSlots(state.world);
+        for (let i = 0; i < (bgDesc?.rackSlots?.length ?? 0); i++) {
+          if (occupied.has(i)) continue;
+          const slot = bgDesc!.rackSlots![i];
+          const screenX = slot.x * GAME_W;
           if (Math.abs(px - screenX) < 50) {
-            this.nearestInteractable = { id: zone.id, kind: "rack_pad", prompt: "[E] Place Rack" };
+            this.nearestInteractable = { id: String(i), kind: "rack_pad", prompt: "[E] Place Rack" };
           }
         }
       }
@@ -731,7 +946,7 @@ export class WorldScene extends Phaser.Scene {
         const state = useGameStore.getState().state;
         const carryingId = state?.world?.player.carryingItemId;
         if (carryingId) {
-          rpcClient.call("placeRack", { itemId: carryingId, zoneId: this.nearestInteractable.id });
+          rpcClient.call("placeRack", { itemId: carryingId, slotIndex: parseInt(this.nearestInteractable.id, 10) });
         }
       }
       return;

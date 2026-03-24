@@ -582,6 +582,7 @@ function uninstallDevice(state: GameState, deviceId: string): EngineResult {
             position: null,
             installedInRackId: null,
             installedAtSlotU: null,
+            rackSlotIndex: null,
           },
         },
         storage: {

@@ -8,6 +8,16 @@
  * Naming: {asset-name}.json lives next to {asset-name}.png in the same folder.
  */
 
+/** Rack slot visual position — where a rack renders in the background */
+export interface RackSlotPosition {
+  /** X as a fraction of GAME_W */
+  x: number;
+  /** Y (bottom of rack) as a fraction of GAME_H */
+  y: number;
+  /** Display height in pixels at 960×540 logical resolution */
+  height: number;
+}
+
 /** Background room descriptor — loaded from assets/backgrounds/{name}.json */
 export interface BackgroundDescriptor {
   /** Matches the Phaser texture key used to load this background */
@@ -18,6 +28,8 @@ export interface BackgroundDescriptor {
   floorY: number;
   /** Player sprite display height in pixels at 960×540 logical resolution */
   playerScale: number;
+  /** Visual positions for rack slots, indexed by slot number (0-based) */
+  rackSlots?: RackSlotPosition[];
 }
 
 /** Port layout for devices with a uniform port grid (most rack equipment) */

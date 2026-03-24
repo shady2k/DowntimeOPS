@@ -2,5 +2,13 @@
   "id": "bg-datacenter",
   "textureKey": "bg-datacenter",
   "floorY": 0.85,
-  "playerScale": 100
+  "playerScale": 100,
+  "rackSlots": [
+    { "x": 0.50, "y": 0.76, "height": 240 },
+    { "x": 0.58, "y": 0.76, "height": 240 },
+    { "x": 0.66, "y": 0.76, "height": 240 },
+    { "x": 0.74, "y": 0.76, "height": 240 },
+    { "x": 0.82, "y": 0.76, "height": 240 },
+    { "x": 0.90, "y": 0.76, "height": 240 }
+  ]
 }

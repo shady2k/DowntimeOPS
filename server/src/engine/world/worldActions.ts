@@ -24,6 +24,15 @@ function genId(prefix: string): string {
   return `${prefix}-${crypto.randomUUID()}`;
 }
 
+function nextRackNumber(state: GameState): number {
+  let max = 0;
+  for (const rack of Object.values(state.racks)) {
+    const match = rack.name.match(/^Rack (\d+)$/);
+    if (match) max = Math.max(max, Number(match[1]));
+  }
+  return max + 1;
+}
+
 // --- World action types ---
 
 export type WorldAction =
@@ -33,7 +42,7 @@ export type WorldAction =
   | { type: "BUY_ITEM"; listingId: string }
   | { type: "PICKUP_ITEM"; itemId: string }
   | { type: "DROP_ITEM"; position: Vec2 }
-  | { type: "PLACE_RACK"; itemId: string; zoneId: string }
+  | { type: "PLACE_RACK"; itemId: string; slotIndex: number }
   | { type: "INSTALL_DEVICE"; itemId: string; rackItemId: string; slotU: number }
   | { type: "PICKUP_FROM_STORAGE"; shelfId: string }
   | { type: "INSTALL_DEVICE_FROM_STORAGE"; itemId: string; rackItemId: string; slotU: number };
@@ -58,7 +67,7 @@ export function applyWorldAction(
     case "DROP_ITEM":
       return dropItem(state, action.position);
     case "PLACE_RACK":
-      return placeRack(state, action.itemId, action.zoneId);
+      return placeRack(state, action.itemId, action.slotIndex);
     case "INSTALL_DEVICE":
       return installDevice(state, action.itemId, action.rackItemId, action.slotU);
     case "PICKUP_FROM_STORAGE":
@@ -242,6 +251,7 @@ function buyItem(
     position: player.position,
     installedInRackId: null,
     installedAtSlotU: null,
+    rackSlotIndex: null,
   };
 
   // Update stock if limited
@@ -291,39 +301,64 @@ function pickupItem(
   if (item.state !== "placed") return { state, error: "Can only pick up placed items" };
   if (item.roomId !== player.roomId) return { state, error: "Item is in another room" };
 
-  // Check proximity (X only — side-view game)
-  const distX = Math.abs(item.position!.x - player.position.x);
-  if (distX > TILE_SIZE * 6) {
-    return { state, error: "Too far away" };
+  // Proximity check — racks don't have a position, skip for them
+  if (item.position) {
+    const distX = Math.abs(item.position.x - player.position.x);
+    if (distX > TILE_SIZE * 6) {
+      return { state, error: "Too far away" };
+    }
   }
 
-  // If this was on a placement zone, free the zone
-  let newRooms = state.world.rooms;
-  const room = newRooms[player.roomId];
-  if (room) {
-    const updatedZones = { ...room.placementZones };
-    for (const [zoneId, zone] of Object.entries(updatedZones)) {
-      if (zone.occupiedByItemId === itemId) {
-        updatedZones[zoneId] = { ...zone, occupiedByItemId: null };
+  // If picking up a rack, remove it from state.racks and uninstall devices to storage
+  let newRacks = state.racks;
+  let newDevices = state.devices;
+  const newItems = { ...state.world.items };
+  if (item.kind === "rack" && item.installedInRackId) {
+    const oldRackId = item.installedInRackId;
+    const { [oldRackId]: _removed, ...restRacks } = state.racks;
+    newRacks = restRacks;
+
+    // Uninstall all devices in this rack back to storage
+    const updatedDevices = { ...state.devices };
+    for (const [devId, device] of Object.entries(updatedDevices)) {
+      if (device.rackId !== oldRackId) continue;
+      // Remove device from devices map
+      delete updatedDevices[devId];
+      // Find the item for this device and mark it as stored
+      for (const [iid, itm] of Object.entries(newItems)) {
+        if (itm.kind === "device" && itm.state === "installed" &&
+            itm.installedInRackId === oldRackId && itm.installedAtSlotU === device.slotU) {
+          newItems[iid] = {
+            ...itm,
+            state: "in_storage",
+            installedInRackId: null,
+            installedAtSlotU: null,
+          };
+          break;
+        }
       }
     }
-    newRooms = {
-      ...newRooms,
-      [player.roomId]: { ...room, placementZones: updatedZones },
-    };
+    newDevices = updatedDevices;
   }
 
   return {
     state: {
       ...state,
+      racks: newRacks,
+      devices: newDevices,
       world: {
         ...state.world,
         player: { ...player, carryingItemId: itemId },
         items: {
-          ...state.world.items,
-          [itemId]: { ...item, state: "carried", position: player.position },
+          ...newItems,
+          [itemId]: {
+            ...item,
+            state: "carried",
+            position: player.position,
+            rackSlotIndex: null,
+            installedInRackId: null,
+          },
         },
-        rooms: newRooms,
       },
     },
   };
@@ -365,11 +400,10 @@ function dropItem(
 function placeRack(
   state: GameState,
   itemId: string,
-  zoneId: string,
+  slotIndex: number,
 ): EngineResult {
   const player = state.world.player;
 
-  // Must be carrying this item
   if (player.carryingItemId !== itemId) {
     return { state, error: "Not carrying this item" };
   }
@@ -381,18 +415,16 @@ function placeRack(
   const room = state.world.rooms[player.roomId];
   if (!room) return { state, error: "Room not found" };
 
-  const zone = room.placementZones[zoneId];
-  if (!zone) return { state, error: "Placement zone not found" };
-  if (zone.occupiedByItemId) return { state, error: "Zone is already occupied" };
-  if (zone.kind !== "rack_slot") return { state, error: "Zone is not a rack slot" };
-
-  // Check proximity (X only — side-view game, Y is irrelevant for nearness)
-  const distX = Math.abs(zone.position.x - player.position.x);
-  if (distX > TILE_SIZE * 6) {
-    return { state, error: "Too far from placement zone" };
+  if (slotIndex < 0 || slotIndex >= room.maxRacks) {
+    return { state, error: "Invalid rack slot" };
   }
 
-  // Also create a corresponding Rack in the simulation state
+  // Check slot is not already occupied
+  const slotOccupied = Object.values(state.world.items).some(
+    (i) => i.kind === "rack" && i.roomId === player.roomId && i.rackSlotIndex === slotIndex,
+  );
+  if (slotOccupied) return { state, error: "Rack slot is already occupied" };
+
   const rackId = genId("rack");
 
   return {
@@ -402,7 +434,7 @@ function placeRack(
         ...state.racks,
         [rackId]: {
           id: rackId,
-          name: `Rack ${Object.keys(state.racks).length + 1}`,
+          name: `Rack ${nextRackNumber(state)}`,
           totalU: 42,
           devices: {},
           powerBudgetWatts: 5000,
@@ -418,18 +450,9 @@ function placeRack(
             ...item,
             state: "placed",
             roomId: player.roomId,
-            position: zone.position,
+            position: null,
             installedInRackId: rackId,
-          },
-        },
-        rooms: {
-          ...state.world.rooms,
-          [player.roomId]: {
-            ...room,
-            placementZones: {
-              ...room.placementZones,
-              [zoneId]: { ...zone, occupiedByItemId: itemId },
-            },
+            rackSlotIndex: slotIndex,
           },
         },
       },
@@ -659,6 +682,7 @@ export function buyCartItems(
         position: null,
         installedInRackId: null,
         installedAtSlotU: null,
+        rackSlotIndex: null,
       };
       newItems[itemId] = item;
       newPackages[itemId] = { itemId, purchasedAt: state.tick };
